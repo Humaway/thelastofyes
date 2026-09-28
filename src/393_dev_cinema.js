@@ -1,5 +1,5 @@
 // ============================================================================
-// Dev: cinema test bench (?dev&test=cinema). A launch-night car park outside a phone store,
+// Dev: cinema test bench (?dev&test=cinema[&from=2|3]). A launch-night car park outside a phone store,
 // and three scenes that exercise every camera type, blend, cue and action of the Director, then
 // hand control back for a walk-and-talk (interrupted and resumed), a bark and an optional
 // conversation ("e – talk" follows Chloe). Owned by: cinema agent.
@@ -15,7 +15,7 @@ CONTENT.levels.CINEMA = {
     const paving = Tex.mat('concrete', { color: 0x8c8882, repeat: [10, 2] });
     const render = Tex.mat('render', { color: 0x76706a, repeat: [4, 2] });
     const dark = Tex.color(0x1a1c20, { rough: 0.5, metal: 0.4 });
-    const glass = Tex.color(0x0e1218, { emissive: 0xb8ccf0, emissiveIntensity: 0.45, rough: 0.2 });
+    const glass = Tex.color(0x0e1218, { emissive: 0xb8ccf0, emissiveIntensity: 0.3, rough: 0.2 });
     const yellow = new THREE.MeshStandardMaterial({ color: 0x3a3000, emissive: 0xffd400, emissiveIntensity: 0.55 });   // own copy: the sign flickers
     const paint = Tex.color(0xd8d2a8, { rough: 0.7 });
     Build.hemi({ sky: 0x2a3450, ground: 0x0c0a08, intensity: 0.4 });
@@ -33,6 +33,9 @@ CONTENT.levels.CINEMA = {
     const fascia = Tex.sign('shopfront', 'NUNDAH');
     const fasciaMat = new THREE.MeshStandardMaterial({ map: fascia, emissiveMap: fascia, emissive: 0xffffff, emissiveIntensity: 0.55, roughness: 0.5 });
     Build.mesh(new THREE.PlaneGeometry(4.6, 1.15), fasciaMat, { pos: [0, 3.875, -7.96], shadow: false, receive: false });
+    const vinyl = (tex, w, h, pos) => Build.mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.6, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.35 }), { pos, shadow: false, receive: false });
+    vinyl(Tex.sign('banner', 'MIDNIGHT LAUNCH — BE FIRST'), 3.4, 0.85, [-2.2, 2.45, -8.18]);
+    vinyl(Tex.poster('promo_upgrade'), 0.85, 1.2, [2.9, 1.25, -8.18]);
     A.data.signMats = [yellow, fasciaMat]; A.data.sign = Build.light('point', { pos: [0, 3.2, -6.8], color: 0xffcf40, intensity: 3, distance: 9 });
     Build.light('point', { pos: [-4, 1.8, -6.9], color: 0xcfe0ff, intensity: 3, distance: 10 });
     Build.light('point', { pos: [2.5, 1.8, -6.9], color: 0xcfe0ff, intensity: 3, distance: 10 });
@@ -89,7 +92,7 @@ CONTENT.scenes['CINE.1'] = {
   title: 'The Car Park', area: 'CINEMA', grade: 'launch_night', amb: 'store_night', music: 'theme_a',
   cast: { chase: 'mk_start', wai: 'mk_wai', chloe: 'mk_chloe' },
   shots: [
-    { cam: { type: 'crane', from: at(3.5, 6.5, -10), to: at(2.6, 1.55, -7.5), look: at(0, 3.6, 2.7), lookTo: 'wai.chest', lens: 24, dur: 7 }, dur: 6,
+    { cam: { type: 'crane', from: at(3.5, 6.5, -10), to: at(2.6, 1.55, -7.5), look: at(0, 8.5, 9), lookTo: 'wai.chest', lens: 24, dur: 7 }, dur: 6,
       cues: [{ t: 0.2, title: ['CAR PARK', '11:40 PM'], hold: 2, fadeIn: 1, fadeOut: 1 }, { t: 1, sfx: 'notif_chime', at: 'mk_chloe' }],
       actions: [{ t: 2.5, who: 'chase', do: 'walkTo', at: 'mk_meet' }, { t: 3, who: 'wai', do: 'gesture', name: 'push_glasses' }] },
     { cam: { type: 'follow', who: 'chase', offset: [0.6, 1.7, -2.3], lookAhead: 2 }, focus: 'chase',
@@ -97,8 +100,8 @@ CONTENT.scenes['CINE.1'] = {
     { cam: { type: 'dolly', from: at(-3.4, 1.5, -1.6), to: at(-1.2, 1.45, -2.1), look: 'wai', lookTo: 'chase', lens: 35, push: 0.04 },
       lines: [{ who: 'wai', text: "Queue's forty deep and not one of them has looked up.", emote: 'tense' },
         { who: 'chase', text: "Then they're ready to buy.", emote: 'smirk' }] },
-    { cam: { type: 'pan', at: at(3.6, 1.6, -2.6), look: at(0, 4, 2.7), lookTo: 'chloe.chest', lens: 32, dur: 3.5 },
-      actions: [{ t: 0.4, who: 'chloe', do: 'lookAt', at: at(0, 3.9, 2.7) }, { t: 3.4, who: 'chloe', do: 'lookAt', at: 'chase' }],
+    { cam: { type: 'pan', at: at(3.6, 1.6, -2.6), look: at(-2.2, 2.5, 2.7), lookTo: 'chloe.chest', lens: 32, dur: 3.5 },
+      actions: [{ t: 0.4, who: 'chloe', do: 'lookAt', at: at(-2.2, 2.45, 2.7) }, { t: 3.4, who: 'chloe', do: 'lookAt', at: 'chase' }],
       lines: [{ who: 'chloe', text: "“Midnight launch. Be first.” First for what?", pause: 1.2 }, { who: 'wai', text: 'Whatever comes next.' }] },
     { cam: { type: 'handheld', at: at(0.4, 1.45, -4.4), look: at(0.3, 1.35, 0.6), lens: 28, handheld: 0.35 }, focus: null,
       lines: [{ who: 'chase', text: "Who's the kid?", to: 'wai' }, { who: 'wai', text: 'New trainee. Be nice.', emote: 'smile' }] },
@@ -108,7 +111,7 @@ CONTENT.scenes['CINE.1'] = {
 
 CONTENT.scenes['CINE.2'] = {
   title: 'Step Four', area: 'CINEMA',
-  start: { cut: true },
+  start: { blend: 1.5 },   // from CINE.1's held frame; Chase and Chloe walk to their marks during it
   cast: { chase: 'mk_c2', chloe: 'mk_k2', wai: { at: 'mk_wai', yaw: 0.8 } },
   shots: [
     { cam: { type: 'ots', over: 'chase', on: 'chloe', side: 'right', push: 0.06 },
@@ -128,11 +131,11 @@ CONTENT.scenes['CINE.2'] = {
     { cam: { type: 'static', at: { of: 'chase', off: [0.5, 1.55, -1.1] }, look: 'chloe', lens: 60 }, focus: { rack: ['chase', 'chloe'], at: 1.2, dur: 1.4 },
       actions: [{ t: 1.4, who: 'chloe', do: 'take', prop: 'manual', from: 'chase' }],
       lines: [{ who: 'chase', text: 'Here.', pause: 0.5 }, { who: 'chloe', text: 'Suit yourself.', emote: 'sad', pause: 0.9 }] },
-    { cam: { type: 'extreme_close', who: 'chloe', part: 'badge' }, dur: 2.6, focus: 'chloe.badge',
-      actions: [{ t: 0, who: 'chloe', do: 'badge', value: 1, where: 'forearm_l' }],
+    { cam: { type: 'extreme_close', who: 'chloe', part: 'badge' }, dur: 2.6,
       lines: [{ who: 'chloe', text: '…', pause: 0.6 }] },
     { cam: { type: 'extreme_close', who: 'chase', part: 'phone' }, dur: 3.2,
-      actions: [{ t: 0, who: 'chase', do: 'hold', prop: 'phone', hand: 'r' }, { t: 0, who: 'chase', do: 'phoneGlow', on: true }],
+      actions: [{ t: 0, who: 'chase', do: 'hold', prop: 'phone', hand: 'r' }, { t: 0, who: 'chase', do: 'phoneGlow', on: true },
+        { t: 0, who: 'chase', do: 'gesture', name: 'type_phone', hold: true }],
       cues: [{ t: 0.2, sfx: 'phone_buzz' }, { t: 0.3, ui: { phone: { kind: 'messages', title: 'WAI', time: '11:41 PM', lines: [{ from: 'them', text: 'head office wants a photo at 300' }, { from: 'them', text: 'smile for once' }] } } },
         { t: 3.1, ui: { phone: null } }] },
     { cam: { type: 'orbit', around: 'wai', radius: 2.3, height: -0.05, from: -35, to: 25, lens: 45 },
@@ -146,13 +149,14 @@ CONTENT.scenes['CINE.2'] = {
 
 CONTENT.scenes['CINE.3'] = {
   title: 'Contact', area: 'CINEMA', skippable: true,
-  start: { blend: 1.2 },
-  cast: { soldier: { def: 'soldier', at: 'mk_soldier' } },
+  start: { cut: true },    // the glass breaks on the cut
+  cast: { soldier: { def: 'soldier', at: 'mk_soldier' }, chase: 'mk_c2', chloe: 'mk_k2', wai: { at: 'mk_wai', yaw: 0.8 } },
   shots: [
     { cam: { type: 'handheld', at: at(-2.6, 1.55, -3.2), look: 'soldier.chest', lens: 30, handheld: 0.8 },
       cues: [{ t: 0, sfx: 'glass_break', at: 'mk_car' }, { t: 0, shake: 0.5, dur: 0.7 }, { t: 0.1, loop: 'siren_far', id: 'siren' }, { t: 0.2, music: 'tension', fade: 0.5 }],
       actions: [{ t: 0.3, who: 'soldier', do: 'aim', at: 'chase' }, { t: 0.4, who: 'chase', do: 'turnTo', to: 'soldier' }, { t: 0.5, who: 'chloe', do: 'emote', name: 'afraid' },
-        { t: 0.8, who: 'chloe', do: 'kneel' }, { t: 1, who: 'chase', do: 'phoneGlow', on: false }, { t: 1, who: 'chase', do: 'drop', hand: 'r' }],
+        { t: 0.8, who: 'chloe', do: 'kneel' }, { t: 1, who: 'chase', do: 'phoneGlow', on: false }, { t: 1, who: 'chase', do: 'gesture', name: null },
+        { t: 1, who: 'chase', do: 'drop', hand: 'r' }],
       lines: [{ who: 'soldier', text: "Hands! Everyone's hands where I can see them!", emote: 'angry', pause: 0.5 }] },
     { cam: { type: 'close', who: 'soldier', handheld: 0.5, side: 'left' },
       actions: [{ t: 0, who: 'chase', do: 'pose', name: 'hands_up' }],
@@ -168,7 +172,7 @@ CONTENT.scenes['CINE.3'] = {
       actions: [{ t: 0, who: 'chloe', do: 'stand' }, { t: 0, who: 'chase', do: 'pose', name: 'stand' }, { t: 0.4, who: 'chase', do: 'hug', to: 'chloe' },
         { t: 2.6, who: 'chase', do: 'attach', to: 'chloe', mode: 'face_hold' }, { t: 4.6, who: 'chase', do: 'detach' }, { t: 4.8, who: 'chase', do: 'decal', kind: 'blood_knuckles' }],
       lines: [{ who: 'chase', text: "You're alright. Look at me. You're alright.", emote: 'tense', pause: 0.8 }, { who: 'chloe', text: "I'm alright.", emote: 'crying' }] },
-    { cam: { type: 'crane', from: at(-6, 1.2, -1.6), to: at(-6.8, 3.2, -2.8), look: at(-4.4, 0.8, 0.5), lens: 30, blend: 1.4 }, dur: 5,
+    { cam: { type: 'crane', from: at(-6.4, 1.1, -2.2), to: at(-7, 3.4, -3.4), look: 'chase.chest', lens: 30, blend: 1.4 }, dur: 5,
       actions: [{ t: 0, who: 'chase', do: 'carry', to: 'chloe' }, { t: 0.2, who: 'chase', do: 'walkTo', path: [at(-2, 0, -0.2), 'mk_benchside'] },
         { t: 3, who: 'chase', do: 'detach' }, { t: 3.1, who: 'chloe', do: 'sit', at: 'mk_bench' }, { t: 3.4, who: 'chase', do: 'lookAt', at: 'chloe' }, { do: 'call', t: 3.6, hook: 'dev.cinema.flicker' }],
       lines: [{ who: 'wai', text: "Car. Now. Before the rest of them come.", off: true, pause: 1.6 }] },
@@ -176,7 +180,7 @@ CONTENT.scenes['CINE.3'] = {
       cues: [{ t: 0.3, fade: 'black', dur: 0.8 }, { t: 1.2, look: 'CINEMA' }, { t: 1.3, fade: 'none', dur: 1.2 }, { t: 1.2, amb: 'store_night' },
         { t: 2.5, call: 'dev.cinema.flicker' }, { t: 4.2, letterbox: false }],
       actions: [{ t: 1.1, who: 'soldier', do: 'hide' }, { t: 1.1, who: 'wai', do: 'place', at: 'mk_meet' }, { t: 1.15, who: 'wai', do: 'show' }, { t: 1.15, who: 'wai', do: 'stand' },
-        { t: 1.15, who: 'soldier', do: 'lie' }, { t: 2.2, who: 'chase', do: 'lookAt', at: null }, { t: 2.3, who: 'chase', do: 'turnTo', to: 'mk_meet' }, { t: 2.4, who: 'chloe', do: 'stand' }] },
+        { t: 1.15, who: 'chloe', do: 'badge', value: 1, where: 'forearm_l' }, { t: 1.15, who: 'soldier', do: 'lie' }, { t: 2.2, who: 'chase', do: 'lookAt', at: null }, { t: 2.3, who: 'chase', do: 'turnTo', to: 'mk_meet' }, { t: 2.4, who: 'chloe', do: 'stand' }] },
   ],
   end: { place: { chase: 'mk_benchside' }, pose: { chloe: 'stand' }, flags: { cinemaSeen: true } },
   exit: { blend: 'gameplay', dur: 1.2 },
@@ -218,9 +222,7 @@ CONTENT.dev.cinema = async G => {
   G.actor('chase', 'chase', 'mk_start'); G.actor('wai', 'wai', 'mk_wai'); G.actor('chloe', 'chloe', 'mk_chloe');
   G.player('chase'); G.control(true);
   await G.wait(1.5);
-  await G.scene('CINE.1');
-  await G.scene('CINE.2');
-  await G.scene('CINE.3');
+  for (let n = +(PARAMS.get('from') || 1); n <= 3; n++) await G.scene('CINE.' + n);   // &from=N starts at scene CINE.N
   G.control(true);
   G.talk('CINE.walk');
   await G.wait(5);

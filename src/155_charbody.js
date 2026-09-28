@@ -5,14 +5,17 @@
 //   CharBody.build(look) -> { root: Group, bones: {name: Bone}, skeleton, body: SkinnedMesh, head: SkinnedMesh,
 //        layout (face UV layout for CharFace), D (dimensions/landmarks), atlas, attach: {name: {bone, pos, nrm}} }
 //   CharBody.rebuild(built, look)      regenerate the body mesh (outfit/part change) on the same skeleton
+//   CharBody.dispose(built)            free its geometries
+//   Extras (look detail < 1) are built merged: built.head is null and the head is part of built.body, its face
+//   painted into the atlas region built.faceR (CharFace paints it).
 //   CharBody.mat(kind)                 shared vertex-coloured PBR materials for props ('prop', 'glow', 'screen')
 //   CharBody.patchBody(material)       per-vertex roughness patch (attribute `rough`)
 //
 // Everything is built in the bind pose in character space: feet at the origin, facing +Z, Y up, the
 // character's left is +X. Bones carry identity rotations in the bind pose (arms hang in a slight A).
 // The body is ONE SkinnedMesh (skin + every clothing layer + hair + worn accessories) using one
-// per-look canvas atlas; the head is a second SkinnedMesh (head + jaw bones) textured by the live
-// face canvas (CharFace). Surfaces are lofts/tubes whose rings are weighted to their bones, with
+// per-look canvas atlas; the head is a second SkinnedMesh (CharHead: head, jaw and neck bones) textured
+// by the live face canvas (CharFace). Surfaces are lofts/tubes whose rings are weighted to their bones, with
 // smooth blends across joints; clothing is the same surfaces pushed outward, with flat-shaded folds.
 // ============================================================================
 const CharBody = (() => {
@@ -76,10 +79,10 @@ const CharBody = (() => {
   // Surface from a vertex grid. f(i, j) -> { p: V3, u, v, w: [[bone, weight]...], c?: Color, r? }.
   // Rows i run along the surface, columns j across/around it. Faces are oriented outward automatically:
   // away from the grid centroid (closed tubes/lofts) or along o.out (a V3, for open sheets).
-  // o: { flat 0..1 (faceted normals), wrap (first/last column coincide), skip(i, j) -> bool, color, rough, out, capStart, capEnd }
+  // o: { flat 0..1 (faceted normals), wrap (first/last column coincide), skip(i, j) -> bool, color, rough, out, back (face inward), capStart, capEnd }
   const _a = new V3(), _b = new V3(), _fn = new V3(), _n = new V3(), _c = new V3();
   let LOD = 1;                                                           // detail of the character being built (extras < 1)
-  const lodN = n => Math.max(3, Math.round(n * (LOD < 1 ? 0.65 : 1)));
+  const lodN = n => Math.max(3, Math.round(n * (LOD < 1 ? 0.65 : 1.25)));
   function surf(mb, R, Cn, f, o = {}) {
     const G = [];
     for (let i = 0; i < R; i++) { const row = []; for (let j = 0; j < Cn; j++) row.push(f(i, j)); G.push(row); }
@@ -99,10 +102,10 @@ const CharBody = (() => {
       }
       QN.push(qr);
     }
-    const flip = orient < 0;
+    const flip = (orient < 0) !== !!o.back;
     if (o.wrap) for (let i = 0; i < R; i++) { N[i][0].add(N[i][Cn - 1]); N[i][Cn - 1].copy(N[i][0]); }
     for (const r of N) for (const n of r) { if (n.lengthSq() < 1e-16) n.set(0, 1, 0); n.normalize(); if (flip) n.negate(); }
-    const col = o.color || WHITE, rough = o.rough ?? 0.85, flat = LOD < 1 ? 0 : o.flat || 0;
+    const col = o.color || WHITE, rough = o.rough ?? 0.85, flat = LOD < 1 ? 0 : (o.flat || 0) * 0.6;   // folds read, facets stay soft
     const emit = (d, nrm) => mb.v(d.p, nrm, d.u, d.v, d.c || col, d.w, d.r ?? rough);
     const quad = (A, B, C, D) => { if (flip) { mb.tri(A, C, B); mb.tri(B, C, D); } else { mb.tri(A, B, C); mb.tri(B, D, C); } };
     if (!flat) {
@@ -155,12 +158,12 @@ const CharBody = (() => {
     const H = look.H, s = H / 1.75, b = look.build || {}, fem = look.fem ?? (look.sex === 'f' ? 1 : 0);
     const D = { H, s, fem, b: Object.assign({ sh: 1, ch: 1, wa: 1, hi: 1, arm: 1, leg: 1, neck: 1, belly: 0, bust: fem, fat: 0, musc: 0, legLen: 1, armLen: 1 }, b) };
     const B = D.b;
-    D.hs = (look.headSize ?? ((0.86 + 0.14 * s) * (1 - fem * 0.05))) * 1.05;
+    D.hs = look.headSize ?? (0.86 + 0.14 * s) * (1 - fem * 0.05);
     // landmarks (character space, bind pose)
     const legK = B.legLen;
     D.yHipJ = 0.500 * H * (0.93 + 0.07 * legK); D.yKnee = 0.268 * H * legK; D.yAnkle = 0.043 * H;
     D.xHip = (0.050 + fem * 0.006) * H * (0.92 + 0.08 * B.hi);
-    D.yHips = 0.535 * H; D.ySpine = 0.60 * H; D.yChest = 0.70 * H; D.yNeck = 0.835 * H; D.yHead = 0.896 * H;
+    D.yHips = 0.535 * H; D.ySpine = 0.60 * H; D.yChest = 0.70 * H; D.yNeck = 0.835 * H; D.yHead = H - 0.182 * D.hs;
     D.shX = (0.097 - fem * 0.008) * H * (0.9 + 0.1 * B.sh); D.shY = 0.797 * H; D.shZ = -0.012 * s;
     D.aAng = 0.16;                                         // A-pose angle of the arms in the bind pose (rad)
     D.Lu = 0.172 * H * B.armLen; D.Lf = 0.150 * H * B.armLen; D.Lp = 0.056 * H; D.Lfi = 0.047 * H; D.Lt = 0.031 * H;
@@ -436,11 +439,18 @@ const CharBody = (() => {
   function neckTube(ctx, o = {}) {
     const { D, mb, A } = ctx, r = A.alloc('skin', 128, 128);
     const y0 = D.yNeck - 0.035 * D.s, y1 = D.headO.y - 0.045 * D.hs, rows = 7, cols = 16;
-    const rn = 0.059 * D.s * D.b.neck * (1 - D.fem * 0.16);
+    const rn = 0.068 * D.s * Math.min(1.1, D.b.neck) * (1 - D.fem * 0.2);
     return surf(mb, rows, cols, (i, j) => {
       const t = i / (rows - 1), y = lerp(y0, y1, t), phi = j / (cols - 1) * TAU - Math.PI;
-      const rx = rn * lerp(1.12, 0.9, t), rz = rn * lerp(1.05, 0.98, t), zc = -0.015 * D.s + t * 0.004;
-      const p = new V3(Math.sin(phi) * rx, y, zc + Math.cos(phi) * rz + (Math.cos(phi) > 0 ? 0.004 * D.s * gauss(t - 0.55, 0.2) * gauss(Math.sin(phi), 0.3) * (1 - D.fem) : 0));
+      let rx = rn * lerp(1.12, 0.9, t), rz = rn * lerp(1.05, 0.98, t), zc = -0.015 * D.s + t * 0.004, apple = 1;
+      // where the head mesh's own neck (CharHead: capsule neckR*0.92 -> *1.04 from y -0.045 to -0.22, mesh down to
+      // HY0) covers this tube, keep the tube inside it: two skin surfaces crossing show as a jagged seam
+      const yl = (y - D.headO.y) / D.hs;
+      if (yl > CharHead.HY0 + 0.004) {
+        const tc = clamp((-0.045 - yl) / 0.175, 0, 1), rc = rn * (0.92 + 0.12 * tc) * 0.9;
+        rx = Math.min(rx, rc); rz = Math.min(rz, rc); zc = D.headO.z + lerp(-0.03, -0.024, tc) * D.hs; apple = 0;
+      }
+      const p = new V3(Math.sin(phi) * rx, y, zc + Math.cos(phi) * rz + (Math.cos(phi) > 0 ? apple * 0.004 * D.s * gauss(t - 0.55, 0.2) * gauss(Math.sin(phi), 0.3) * (1 - D.fem) : 0));
       const [u, v] = A.uv(r, j / (cols - 1), t);
       const w = t < 0.35 ? W2('chest', 'neck', sstep(0, 0.35, t)) : W2('neck', 'head', sstep(0.6, 1, t));
       return { p, u, v, w };
@@ -528,175 +538,32 @@ const CharBody = (() => {
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Head. Rings of cross-sections in head space (origin between the eyes, metres for hs = 1):
-  // [y, wFront, wBack, zFront, zBack, zCentre]; features (sockets, brow, lips, chin) displace it.
-  const HEAD = [
-    [-0.128, .020, .036, .034, .016, .010], [-0.121, .028, .045, .052, .024, .004], [-0.110, .034, .052, .066, .030, .002],
-    [-0.098, .041, .058, .074, .036, .0], [-0.087, .047, .061, .078, .042, .0], [-0.080, .051, .063, .080, .048, .0],
-    [-0.0755, .053, .064, .080, .052, .0], [-0.0715, .055, .065, .080, .056, .0], [-0.064, .058, .066, .080, .064, .0],
-    [-0.054, .061, .067, .079, .074, .0], [-0.044, .064, .068, .079, .084, .0], [-0.030, .067, .071, .081, .094, .0],
-    [-0.016, .069, .073, .083, .100, .0], [-0.004, .070, .074, .084, .104, .0], [0.008, .070, .075, .084, .106, .0],
-    [0.020, .069, .075, .087, .107, .0], [0.034, .067, .075, .087, .107, .0], [0.050, .064, .074, .084, .106, .0],
-    [0.066, .058, .070, .077, .101, .0], [0.080, .050, .064, .066, .093, .0], [0.094, .039, .053, .050, .079, .0],
-    [0.106, .025, .037, .031, .058, .0], [0.114, .011, .018, .013, .030, .0]];
-  const HY0 = -0.128, HY1 = 0.117, UMAX = 1.55;
-  function headKeys(look) {
-    const h = look.head || {};
-    const jaw = h.jaw ?? 1, chin = h.chin ?? 1, wid = h.width ?? 1, cr0 = h.cranium ?? 1, fem = look.fem ?? (look.sex === 'f' ? 1 : 0);
-    const hollow = h.hollow || 0, full = h.full || 0;
-    return HEAD.map(k => {
-      const y = k[0];
-      const lower = sstep(-0.02, -0.1, y), upper = sstep(0.0, 0.08, y);
-      const wm = wid * (1 + (jaw - 1) * lower * 0.9 - fem * 0.04 * lower + full * 0.06 * lower - hollow * 0.035 * gauss(y + 0.05, 0.03)) * (1 + (cr0 - 1) * upper);
-      const zf = k[3] * (1 + (chin - 1) * 0.3 * sstep(-0.08, -0.11, y)), zb = k[4] * (1 + (cr0 - 1) * upper * 0.6);
-      return [y, k[1] * wm, k[2] * wm, zf, zb, k[5]];
-    });
-  }
-  const _hk = [0, 0, 0, 0, 0];
-  function headRing(HK, y, phi, out) {
-    cr(HK, y, _hk);
-    const [wf, wb, zf, zb, zc] = _hk;
-    const c = Math.cos(phi), s = Math.sin(phi);
-    const nF = 2.6, nB = 2.1, n = c > 0 ? nF : nB;
-    const fw = c > 0 ? lerp(wb, wf, Math.pow(c, 0.7)) : wb;
-    out.x = fw * Math.sign(s) * Math.pow(Math.abs(s), 2 / n);
-    out.z = zc + (c >= 0 ? zf : zb) * Math.sign(c) * Math.pow(Math.abs(c), 2 / n);
-    out.y = y;
-    return out;
-  }
-  // phi at which the front surface reaches x (for placing painted features)
-  function headPhi(HK, y, x) {
-    let lo = -Math.PI / 2, hi = Math.PI / 2; const p = new V3();
-    for (let k = 0; k < 30; k++) { const m = (lo + hi) / 2; headRing(HK, y, m, p); if (p.x < x) lo = m; else hi = m; }
-    return (lo + hi) / 2;
-  }
-  const headUV = (phi, y) => [0.5 + clamp(phi, -UMAX, UMAX) / (2 * UMAX), clamp((y - HY0) / (HY1 - HY0), 0, 1)];
-
-  function buildHead(D, look) {
-    const hs = D.hs, HK = D.HK, h = look.head || {}, fem = look.fem ?? (look.sex === 'f' ? 1 : 0);
-    const mb = new MB(), O = D.headO;
-    const ipd = (h.ipd ?? (0.0625 - fem * 0.002)), eyeW = h.eyeW ?? 0.0148, eyeY = 0.0;
-    const eyePhi = headPhi(HK, eyeY, ipd / 2);
-    const brow = (h.brow ?? (1 - fem * 0.6)), cheek = h.cheek ?? 1, lip = h.lips ?? 1, chin = h.chin ?? 1;
-    const mouthY = -0.0735 + (h.mouthUp ?? fem * 0.0035), mouthW = (h.mouthW ?? (0.025 - fem * 0.001)), mY = mouthY;
-    // feature displacement (head space, before scaling)
-    const feat = (phi, y, p) => {
-      const ae = Math.abs(phi) - eyePhi;
-      let d = 0;
-      d -= 0.0098 * gauss(ae, 0.2) * gauss(y - 0.002, 0.014) * Math.max(0, Math.cos(phi));                                  // sockets
-      d += 0.0032 * gauss(ae + 0.01, 0.1) * gauss(y - 0.001, 0.007);                                                         // eyeball under the lids
-      d += 0.0045 * brow * gauss(Math.abs(phi) - eyePhi * 0.95, 0.3) * gauss(y - 0.021, 0.008) * Math.max(0, Math.cos(phi));   // brow ridge
-      d += 0.004 * cheek * gauss(Math.abs(phi) - 0.78, 0.2) * gauss(y + 0.02, 0.014);                                        // cheekbones
-      d -= 0.0016 * gauss(Math.abs(phi) - lerp(0.3, 0.42, sstep(-0.05, -0.08, y)), 0.06) * sstep(-0.042, -0.05, y) * (1 - sstep(mY - 0.004, mY - 0.012, y)); // nasolabial fold
-      d += 0.0015 * gauss(ae, 0.25) * gauss(y + 0.016, 0.006);                                                              // lower orbital rim
-      d += 0.0048 * lip * gauss(phi, 0.26) * gauss(y - mY - 0.0075, 0.0055);                                                        // upper lip
-      d += 0.0058 * lip * gauss(phi, 0.24) * gauss(y - mY + 0.008, 0.0058);                                                       // lower lip
-      d -= 0.0022 * gauss(phi, 0.33) * gauss(y - mouthY, 0.0022);                                                             // mouth line
-      d -= 0.0028 * gauss(phi, 0.26) * gauss(y - mY + 0.016, 0.004);                                                              // under the lower lip
-      d += 0.006 * chin * gauss(phi, 0.3) * gauss(y + 0.102, 0.009);                                                         // chin
-      d += 0.0018 * gauss(phi, 0.06) * gauss(y - mY - 0.0155, 0.004);                                                               // philtrum
-      d -= 0.004 * gauss(Math.abs(phi) - 1.12, 0.2) * gauss(y - 0.036, 0.018);                                               // temples
-      d -= (h.hollow || 0) * 0.006 * gauss(Math.abs(phi) - 0.8, 0.22) * gauss(y + 0.056, 0.016);                             // hollow cheeks
-      d += (h.full || 0) * 0.005 * gauss(Math.abs(phi) - 0.75, 0.3) * gauss(y + 0.055, 0.02);                                // full cheeks
-      d += 0.004 * (h.jaw ?? 1) * gauss(Math.abs(phi) - 1.25, 0.25) * gauss(y + 0.085, 0.012) * (1 - fem * 0.6);             // jaw angle
-      const L = Math.hypot(p.x, p.z - _hk[4]) || 1;
-      p.x += p.x / L * d; p.z += (p.z - _hk[4]) / L * d;
-    };
-    const cols = LOD < 1 ? 31 : 41, rows = LOD < 1 ? 26 : 34;
-    const phiAt = j => { const t = j / (cols - 1) * 2 - 1; return Math.PI * (0.52 * t + 0.48 * t * t * t); };
-    const yAt = i => { const t = i / (rows - 1); return HY0 + (HY1 - HY0) * (0.5 - 0.5 * Math.cos(Math.PI * (t * 0.86 + 0.07 * Math.sin(Math.PI * t)))) ; };
-    const ys = []; for (let i = 0; i < rows; i++) ys.push(yAt(i));
-    // force rings on the lip line so the jaw opens cleanly between the lips
-    const lipRows = [-0.011, -0.006, -0.0022, 0, 0.0022, 0.006, 0.0115].map(o => mY + o);
-    for (const ly of lipRows) { let bi = 0, bd = 9; ys.forEach((y, i) => { const d = Math.abs(y - ly); if (d < bd) { bd = d; bi = i; } }); ys[bi] = ly; }
-    ys.sort((a, b) => a - b);
-    const jawW = y => 1 - sstep(mY - 0.001, mY + 0.0009, y);
-    const pv = new V3();
-    const G = surf(mb, rows, cols, (i, j) => {
-      const y = ys[i], phi = phiAt(j);
-      headRing(HK, y, phi, pv); feat(phi, y, pv);
-      const p = pv.clone().multiplyScalar(hs).add(O);
-      const [u, v] = headUV(phi, y);
-      const front = sstep(-0.3, 0.2, Math.cos(phi));
-      const jw = jawW(y) * front * (1 - sstep(0.8, 1.3, Math.abs(phi))) + jawW(y) * (1 - front) * 0.3 * sstep(-0.1, -0.12, y);
-      const w = y < -0.112 && Math.cos(phi) < 0 ? W2('neck', 'head', 0.55) : W2('head', 'jaw', clamp(jw, 0, 1));
-      return { p, u, v, w, r: 0.55 };
-    }, { wrap: true, rough: 0.55,
-      capEnd: { p: new V3(0, HY1 + 0.002, -0.012).multiplyScalar(hs).add(O), n: new V3(0, 1, 0), w: W1('head'), u: 0.5, v: 1 },
-      capStart: { p: new V3(0, HY0 - 0.004, 0.004).multiplyScalar(hs).add(O), n: new V3(0, -1, 0), w: W2('head', 'jaw', 0.5), u: 0.5, v: 0 } });
-    // nose: one surface from the bridge (between the eyes) over the tip to the subnasale, flaring into the alae;
-    // its edges sink into the face. theta runs top -> bottom, phi across (front = 0).
-    const nose = h.nose ?? 1, noseW = h.noseW ?? 1, bump = h.noseBump || 0;
-    const zAt = (y, x) => { const ph = headPhi(HK, y, x); headRing(HK, y, ph, pv); feat(ph, y, pv); return pv.z; };
-    const NK = [[0, 0.012, 0.0018, 0.0052], [0.25, -0.006, 0.0075, 0.0068], [0.5, -0.024, 0.0135, 0.0088], [0.66, -0.036, 0.0198, 0.0112], [0.76, -0.0425, 0.0222, 0.0135],
-      [0.85, -0.047, 0.0182, 0.0158], [0.93, -0.0505, 0.0098, 0.0162], [1, -0.0532, 0.0012, 0.0118]];
-    const nk = [0, 0, 0];
-    const nr = 19, nc = 19;
-    surf(mb, nr, nc, (i, j) => {
-      const t = i / (nr - 1);
-      cr(NK, t, nk);
-      const y = nk[0] * (0.8 + 0.2 * nose) * (1 - fem * 0.07), zf = nk[1] * nose * (1 - fem * 0.12) + bump * 0.0035 * gauss(t - 0.4, 0.12), hw = nk[2] * noseW;
-      const a = (j / (nc - 1)) * 2 - 1, aa = Math.abs(a), x = hw * a;
-      const lobe = lerp(1, 0.6, sstep(0.55, 0.88, t));                   // the tip narrows to a lobule between the wings
-      const tipP = Math.pow(Math.max(0, Math.cos(Math.min(1, aa / lobe) * Math.PI / 2)), lerp(1.3, 0.75, sstep(0.45, 0.72, t)));
-      const ala = 0.0056 * noseW * sstep(0.55, 0.86, t) * (1 - sstep(0.94, 1, t)) * Math.sqrt(Math.max(0, 1 - aa * aa)) * (1 - fem * 0.2);
-      const base = zAt(y, x * 1.02) - 0.0015;
-      const z = base + Math.max(zf * tipP + 0.0016 * gauss(t - 0.74, 0.07) * tipP, ala);
-      const [u, v] = headUV(headPhi(HK, y, x), y);
-      return { p: new V3(x, y - 0.0015 * gauss(t - 0.9, 0.08) * sstep(0.4, 0.8, aa), z).multiplyScalar(hs).add(O), u, v, w: W1('head'), r: 0.42 };
-    }, { rough: 0.42, out: new V3(0, 0, 1) });
-    // ears: front face with a raised helix rim and a hollow concha, flat back; the front edge sits on the
-    // head and the back edge stands out, the whole ear facing slightly forward.
-    const earY = -0.02, ear = h.ear ?? 1;
-    for (const sd of [1, -1]) {
-      headRing(HK, earY, sd * 1.52, pv);
-      const ec = new V3(pv.x, earY, pv.z - 0.006);
-      const nOut = new V3(sd, 0, 0.18).normalize(), up = new V3(0, 1, -0.12).normalize(), fw = new V3().crossVectors(up, nOut).multiplyScalar(sd).normalize();
-      const [eu, evv] = headUV(sd * 1.6, earY);
-      const NR = 5, NT = 18;
-      surf(mb, NR * 2 + 1, NT + 1, (i, j) => {
-        const front = i <= NR, r = front ? i / NR : (2 * NR - i) / NR, th = j / NT * TAU;
-        const st = Math.sin(th), ct = Math.cos(th);
-        const ha = 0.0138 * ear * (1 - 0.22 * Math.max(0, -st)), hb = 0.026 * ear;
-        const u = ct * ha * r, v = st * hb * r - (st < 0 ? 0.003 * r : 0);
-        const base = Math.max(0, 0.011 - u) * 0.42 + 0.001;
-        const rim = r > 0.72 ? 0.0038 * Math.sin((r - 0.72) / 0.28 * Math.PI) * (1 - 0.6 * Math.max(0, ct)) : 0;
-        const bowl = -0.0034 * Math.exp(-((r - 0.35) ** 2) / 0.06) * (1 - 0.5 * Math.max(0, st));
-        const w = front ? base + 0.0032 + rim + bowl : base - 0.001;
-        const p = ec.clone().addScaledVector(fw, u).addScaledVector(up, v).addScaledVector(nOut, w);
-        const inner = front && r < 0.72 ? Math.exp(-((r - 0.35) ** 2) / 0.08) : 0;
-        return { p: p.multiplyScalar(hs).add(O), u: eu, v: evv, w: W1('head'), c: new THREE.Color(0.93 - inner * 0.3, 0.8 - inner * 0.42, 0.78 - inner * 0.42), r: 0.5 };
-      }, { wrap: true, rough: 0.5 });
-    }
-    // Layout for the face painter and eye shader (UV space). toUV(x, y) inverts the ring mapping with a lookup table.
-    const TY = [], ny = 50, nphi = 120;
-    for (let i = 0; i <= ny; i++) {
-      const y = HY0 + (HY1 - HY0) * i / ny, xs = new Float32Array(nphi + 1);
-      for (let k = 0; k <= nphi; k++) { headRing(HK, y, -UMAX + 2 * UMAX * k / nphi, pv); xs[k] = pv.x; }
-      TY.push(xs);
-    }
-    const rowPhi = (xs, x) => { let lo = 0, hi = nphi; if (x <= xs[0]) return -UMAX; if (x >= xs[nphi]) return UMAX; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (xs[m] < x) lo = m; else hi = m; } const t = (x - xs[lo]) / (xs[hi] - xs[lo] || 1); return -UMAX + 2 * UMAX * (lo + t) / nphi; };
-    const toUV = (x, y) => {
-      const fy = clamp((y - HY0) / (HY1 - HY0) * ny, 0, ny - 1e-6), i = Math.floor(fy), t = fy - i;
-      const phi = lerp(rowPhi(TY[i], x), rowPhi(TY[i + 1], x), t);
-      return headUV(phi, y);
-    };
-    const sv = 1 / (HY1 - HY0), e = 0.002;
-    const su = (toUV(ipd / 2 + e, eyeY)[0] - toUV(ipd / 2 - e, eyeY)[0]) / (2 * e);
-    const L = {
-      toUV, sv, su, eyeL: toUV(ipd / 2, eyeY), eyeR: toUV(-ipd / 2, eyeY), eyeW, ipd,
-      mouth: toUV(0, mouthY), mouthW, mouthY, noseK: (0.8 + 0.2 * nose) * (1 - fem * 0.07), nose, noseW, chinY: -0.104, browY: 0.0165, hairY: h.hairline ?? 0.068, eyePhi,
-    };
-    return { geo: mb.geometry(), layout: L };
-  }
-
-  // ---------------------------------------------------------------------------------------------
   // Materials
+  // rough >= 2 marks an extra's merged head: like the hero face material, it looks up shadows 10 cm off its surface
+  const SHADOW_V = THREE.ShaderChunk.shadowmap_vertex.replace(/(\w+\[ i \])\.shadowNormalBias/g, '($1.shadowNormalBias + headV * 0.1)');
+  // Character shadows: the renderer's 3x3 PCF-soft filter shows texel staircases on a face at 50-85 mm (a level sun
+  // spans 1-3 cm per texel). Characters swap it for a 12-tap Poisson disc over ~2.5 texels, rotated per pixel —
+  // fewer compares than the stock filter, and terminators and cast shadows on skin read as penumbrae, not stairs.
+  const SOFT_PARS = THREE.ShaderChunk.shadowmap_pars_fragment.replace(
+    /#elif defined\( SHADOWMAP_TYPE_PCF_SOFT \)[\s\S]*?\) \* \( 1\.0 \/ 9\.0 \);/,
+    `#elif defined( SHADOWMAP_TYPE_PCF_SOFT )
+      vec2 cTex = vec2( 2.5 ) / shadowMapSize;
+      float cAn = 6.2831853 * fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) );
+      mat2 cRot = mat2( cos( cAn ), sin( cAn ), -sin( cAn ), cos( cAn ) );
+      shadow = 0.0;
+      for ( int k = 0; k < 12; k ++ ) shadow += texture2DCompare( shadowMap, shadowCoord.xy + cRot * CPOIS[ k ] * cTex, shadowCoord.z );
+      shadow *= 1.0 / 12.0;`)
+    .replace('float getShadow(', `const vec2 CPOIS[ 12 ] = vec2[ 12 ]( vec2( -0.326, -0.406 ), vec2( -0.840, -0.074 ), vec2( -0.696, 0.457 ),
+      vec2( -0.203, 0.621 ), vec2( 0.962, -0.195 ), vec2( 0.473, -0.480 ), vec2( 0.519, 0.767 ), vec2( 0.185, -0.893 ),
+      vec2( 0.507, 0.064 ), vec2( 0.896, 0.412 ), vec2( -0.322, -0.933 ), vec2( -0.792, -0.598 ) );
+    float getShadow(`);
+  const softShadow = fs => fs.replace('#include <shadowmap_pars_fragment>', SOFT_PARS);
   function patchBody(m) {
     m.onBeforeCompile = sh => {
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float rough;\nvarying float vRough;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRough = rough;');
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vRough;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nfloat headV = step(1.5, rough);\nvRough = rough - 2.0 * headV;')
+        .replace('#include <shadowmap_vertex>', SHADOW_V);
+      sh.fragmentShader = softShadow(sh.fragmentShader).replace('#include <common>', '#include <common>\nvarying float vRough;')
         .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor *= vRough;');
     };
     m.customProgramCacheKey = () => 'charbody';
@@ -716,18 +583,27 @@ const CharBody = (() => {
   // ---------------------------------------------------------------------------------------------
   function build(look) {
     const D = dims(look), J = joints(D, look);
-    D.HK = headKeys(look);
     LOD = look.detail ?? (look.gen ? 0.6 : 1);
+    D.sdf = CharHead.sdfOf(look, 0.068 * D.s * Math.min(1.1, D.b.neck) * (1 - D.fem * 0.2) / D.hs);   // the head's neck covers the body's neck tube
     const sk = makeSkeleton(J);
     const root = new THREE.Group();
     root.add(sk.bones.hips);
     const B = { D, J, look, root, bones: sk.bones, skeleton: sk.skeleton, attach: {} };
     B.atlas = CharPaint.atlas(look, D);
-    B.body = new THREE.SkinnedMesh(bodyGeometry(B), null);
-    const hd = buildHead(D, look);
+    B.merged = LOD < 1;                                     // extras: head and body are one mesh, the face painted into the atlas
+    if (B.merged) B.faceR = B.atlas.A.alloc('face', 400, 400);
+    const bodyGeo = bodyGeometry(B), hd = CharHead.build(D, look);
     B.layout = hd.layout;
-    B.head = new THREE.SkinnedMesh(hd.geo, null);
+    if (B.merged) {
+      const uv = hd.geo.attributes.uv, A = B.atlas.A, r = B.faceR;
+      for (let i = 0; i < uv.count; i++) { const [u, v] = A.uv(r, uv.getX(i), uv.getY(i)); uv.setXY(i, u, v); }
+      const ro = hd.geo.attributes.rough; for (let i = 0; i < ro.count; i++) ro.setX(i, ro.getX(i) + 2);
+      B.headGeo = hd.geo;
+      B.body = new THREE.SkinnedMesh(mergeGeometries([bodyGeo, hd.geo]), null); bodyGeo.dispose();
+      B.head = null;
+    } else { B.body = new THREE.SkinnedMesh(bodyGeo, null); B.head = new THREE.SkinnedMesh(hd.geo, null); }
     for (const m of [B.body, B.head]) {
+      if (!m) continue;
       m.castShadow = m.receiveShadow = true;
       root.add(m); m.bind(sk.skeleton, new THREE.Matrix4());
       m.boundingSphere = new THREE.Sphere(new V3(0, D.H * 0.5, 0), D.H * 0.95);
@@ -743,9 +619,11 @@ const CharBody = (() => {
   }
   function rebuild(B, look) {
     B.look = look; LOD = look.detail ?? (look.gen ? 0.6 : 1);
-    const g = bodyGeometry(B);
+    let g = bodyGeometry(B);
+    if (B.merged) { const m = mergeGeometries([g, B.headGeo]); g.dispose(); g = m; }
     B.body.geometry.dispose(); B.body.geometry = g;
   }
+  function dispose(B) { B.body.geometry.dispose(); if (B.head) B.head.geometry.dispose(); if (B.headGeo) B.headGeo.dispose(); }
 
-  return { get LOD() { return LOD; }, build, rebuild, mat, patchBody, MB, surf, capRing, torsoLoft, torsoPt, limb, hand, foot, neckTube, W1, W2, BI, BONES, cr, gauss, sstep, clamp, lerp, vnoise, hash, Atlas, headRing, headPhi, headUV, TAU };
+  return { get LOD() { return LOD; }, build, rebuild, dispose, mat, patchBody, softShadow, MB, surf, capRing, torsoLoft, torsoPt, limb, hand, foot, neckTube, W1, W2, BI, BONES, cr, gauss, sstep, clamp, lerp, vnoise, hash, Atlas, headUV: CharHead.uv, TAU };
 })();

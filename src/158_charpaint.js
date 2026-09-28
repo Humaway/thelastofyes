@@ -44,7 +44,7 @@ const CharPaint = (() => {
     const P = PAINT[sp.t] || PAINT.cloth;
     P(g, r, sp, R, k, look);
     g.restore();
-    grain(A, r, sp, R);
+    if (!look.gen) grain(A, r, sp, R);                                 // extras skip the per-pixel weave
   }
 
   // blotch: soft irregular stain
@@ -91,24 +91,49 @@ const CharPaint = (() => {
       }
       if (look.scar && r.key === 'skin_hand') { g.strokeStyle = css(mix(base, [255, 220, 210], 0.4), 0.9); g.lineWidth = 2 * k; g.beginPath(); g.moveTo(r.x + r.w * 0.55, r.y + r.h * 0.4); g.lineTo(r.x + r.w * 0.8, r.y + r.h * 0.6); g.stroke(); }
     },
+    // hair: strands run along the region's v (bottom = root / hairline, top = tip / crown), in bundles of
+    // shared tone; a sheen band catches the light; roots sit darker. Curls and buzz cuts get their own marks.
     hair(g, r, sp, R, k) {
-      const base = rgbOf(sp.color), grey = sp.grey || 0;
-      g.fillStyle = css(base); g.fillRect(r.x, r.y, r.w, r.h);
-      // strands: many thin vertical streaks of lighter/darker tone (v runs root -> tip)
-      const n = Math.round(r.w * 1.6);
-      for (let i = 0; i < n; i++) {
-        const x = r.x + R() * r.w, lw = (0.6 + R() * 1.4) * k;
-        const lt = R();
-        let c = lt < 0.5 ? mul(base, 0.55 + R() * 0.3) : mul(base, 1.1 + R() * 0.45);
-        if (R() < grey) c = mix(c, [205, 205, 200], 0.75);
-        g.strokeStyle = css(c, 0.35 + R() * 0.4); g.lineWidth = lw;
-        g.beginPath(); g.moveTo(x, r.y + r.h * R() * 0.3); g.bezierCurveTo(x + (R() - 0.5) * 6 * k, r.y + r.h * 0.4, x + (R() - 0.5) * 6 * k, r.y + r.h * 0.7, x + (R() - 0.5) * 8 * k, r.y + r.h * (0.8 + R() * 0.2)); g.stroke();
+      const base = rgbOf(sp.color), grey = sp.grey || 0, tone = c => R() < grey ? mix(c, [206, 204, 198], 0.8) : c;
+      g.fillStyle = css(mul(base, 0.82)); g.fillRect(r.x, r.y, r.w, r.h);
+      if (sp.buzz) {                                                       // stubble of hair over scalp
+        for (let i = 0; i < r.w * r.h * 0.6; i++) { g.fillStyle = css(tone(R() < 0.6 ? mul(base, 0.7) : mul(base, 1.3)), 0.55); g.fillRect(r.x + R() * r.w, r.y + R() * r.h, 1.2 * k, 1.8 * k); }
+        return;
       }
-      // roots darker (t=0 is the bottom of the region = root for clumps), tips catch light
+      if (sp.curl) {
+        for (let i = 0; i < r.w * r.h / 30; i++) {
+          const x = r.x + R() * r.w, y = r.y + R() * r.h, rad = (2 + R() * 3.5) * k * (sp.beard ? 0.6 : 1), l = R();
+          g.strokeStyle = css(tone(l < 0.45 ? mul(base, 0.55) : mul(base, 1.1 + R() * 0.4)), 0.5 + R() * 0.4); g.lineWidth = (0.8 + R()) * k;
+          g.beginPath(); g.arc(x, y, rad, R() * 6.3, R() * 6.3 + 3 + R() * 2); g.stroke();
+        }
+      } else {
+        const bundles = Math.round(r.w / (5 * k)) + 4, sheen = sp.cap ? [0.5, 0.82] : [0.3, 0.55];
+        for (let b = 0; b < bundles; b++) {
+          const x0 = r.x + R() * r.w, bt = 0.7 + R() * 0.6, wav = (R() - 0.5) * 8 * k, n = 6 + Math.floor(R() * 6);
+          for (let i = 0; i < n; i++) {
+            const x = x0 + (R() - 0.5) * 6 * k, c = tone(mul(base, bt * (0.8 + R() * 0.45)));
+            g.strokeStyle = css(c, 0.3 + R() * 0.45); g.lineWidth = (0.6 + R() * 1.1) * k;
+            const y0 = r.y + r.h * (1 - R() * 0.15), y1 = r.y + r.h * R() * 0.2;
+            g.beginPath(); g.moveTo(x, y0); g.bezierCurveTo(x + wav, r.y + r.h * 0.66, x - wav, r.y + r.h * 0.33, x + wav * 0.5, y1); g.stroke();
+          }
+        }
+        // sheen: a band of light strands
+        const sy0 = r.y + r.h * (1 - sheen[1]), sy1 = r.y + r.h * (1 - sheen[0]);
+        for (let i = 0; i < r.w * 0.9; i++) {
+          const x = r.x + R() * r.w, len = (sy1 - sy0) * (0.4 + R() * 0.6), y = sy0 + R() * (sy1 - sy0 - len);
+          g.strokeStyle = css(mix(base, [255, 238, 215], 0.35 + R() * 0.25), 0.1 + R() * 0.16); g.lineWidth = (0.6 + R()) * k;
+          g.beginPath(); g.moveTo(x, y); g.lineTo(x + (R() - 0.5) * 3 * k, y + len); g.stroke();
+        }
+      }
+      // roots darker (bottom of the region), ends lighter
       const gr = g.createLinearGradient(0, r.y + r.h, 0, r.y);
-      gr.addColorStop(0, 'rgba(0,0,0,0.35)'); gr.addColorStop(0.35, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(255,240,220,0.08)');
+      gr.addColorStop(0, 'rgba(10,6,4,0.4)'); gr.addColorStop(sp.cap ? 0.12 : 0.25, 'rgba(10,6,4,0)'); gr.addColorStop(1, sp.cap ? 'rgba(10,6,4,0.1)' : 'rgba(255,240,220,0.08)');
       g.fillStyle = gr; g.fillRect(r.x, r.y, r.w, r.h);
-      if (sp.cap) { g.fillStyle = 'rgba(0,0,0,0.12)'; g.fillRect(r.x, r.y + r.h * 0.85, r.w, r.h * 0.15); }
+      if (sp.part != null) {                                               // the parting: scalp showing along one meridian
+        const x = r.x + r.w * (sp.part + Math.PI) / (2 * Math.PI), pg = g.createLinearGradient(x - 3 * k, 0, x + 3 * k, 0);
+        pg.addColorStop(0, 'rgba(200,160,140,0)'); pg.addColorStop(0.5, 'rgba(190,150,130,0.55)'); pg.addColorStop(1, 'rgba(200,160,140,0)');
+        g.fillStyle = pg; g.fillRect(x - 3 * k, r.y + r.h * 0.3, 6 * k, r.h * 0.62);
+      }
     },
     cloth(g, r, sp, R, k, look) {
       const base = rgbOf(sp.color || '#888');
@@ -207,6 +232,15 @@ const CharPaint = (() => {
     },
   };
   PAINT.fur = PAINT.hair;
+  PAINT.coat = (g, r, sp, R, k) => {                                   // short animal coat: fine hair flecks, soft dapples
+    const base = rgbOf(sp.color); g.fillStyle = css(base); g.fillRect(r.x, r.y, r.w, r.h);
+    for (let i = 0; i < 24; i++) blotch(g, r.x + R() * r.w, r.y + R() * r.h, 30 * k * (0.5 + R()), R() < 0.5 ? mul(base, 0.9) : mul(base, 1.1), 0.12, R);
+    for (let i = 0; i < r.w * r.h / 6; i++) {
+      const x = r.x + R() * r.w, y = r.y + R() * r.h, l = (2 + R() * 3) * k, a = Math.PI / 2 + (R() - 0.5) * 0.6;
+      g.strokeStyle = css(R() < 0.5 ? mul(base, 0.8) : mul(base, 1.2), 0.25); g.lineWidth = k;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+    }
+  };
   PAINT.pocket = (g, r, sp, R, k) => {
     const base = rgbOf(sp.color || '#888'); g.fillStyle = css(mul(base, 0.96)); g.fillRect(r.x, r.y, r.w, r.h);
     const sc = mul(base, 0.62), m = 3 * k;
@@ -252,10 +286,10 @@ const CharPaint = (() => {
 
   // Per-pixel fabric grain: multiplies the region by a weave pattern + fine noise.
   function grain(A, r, sp, R) {
-    const fab = sp.t === 'skin' ? 'skin' : sp.t === 'hair' ? null : sp.t === 'badge' || sp.t === 'logo' || sp.t === 'text' ? 'paper' : sp.fab || (sp.t === 'shoe' ? (sp.style === 'fluffy' ? 'terry' : sp.style === 'sneaker' ? 'canvas' : 'leather') : 'cotton');
+    const fab = sp.t === 'skin' ? 'skin' : sp.t === 'hair' || sp.t === 'coat' ? null : sp.t === 'badge' || sp.t === 'logo' || sp.t === 'text' ? 'paper' : sp.fab || (sp.t === 'shoe' ? (sp.style === 'fluffy' ? 'terry' : sp.style === 'sneaker' ? 'canvas' : 'leather') : 'cotton');
     if (!fab) return;
     const g = A.ctx, img = g.getImageData(r.x, r.y, r.w, r.h), d = img.data, W = r.w, k = A.size / 1024;
-    const amp = { skin: 5, paper: 3, cotton: 7, pique: 7, twill: 9, denim: 16, canvas: 12, knit: 22, fleece: 8, terry: 18, nylon: 5, puffer: 5, leather: 7, rubber: 4, hivis: 6, scrubs: 6, wool: 18, plaid: 8, hawaii: 6, camo: 8 }[fab] ?? 8;
+    const amp = { skin: 5, paper: 3, cotton: 7, pique: 4, twill: 9, denim: 16, canvas: 12, knit: 22, fleece: 8, terry: 18, nylon: 5, puffer: 5, leather: 7, rubber: 4, hivis: 6, scrubs: 6, wool: 18, plaid: 8, hawaii: 6, camo: 8 }[fab] ?? 8;
     const sc = Math.max(1, Math.round(k * (fab === 'knit' || fab === 'wool' ? 2 : 1)));
     for (let y = 0; y < r.h; y++) for (let x = 0; x < W; x++) {
       const X = (x / sc) | 0, Y = (y / sc) | 0;

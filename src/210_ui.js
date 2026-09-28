@@ -992,6 +992,7 @@ const UI = (() => {
     if (timers.length) { const due = timers; timers = []; for (const t of due) { if ((t.t -= dt) <= 0) t.f(); else timers.push(t); } }
     const bar = Math.max(0, (innerHeight - innerWidth / 2.39) / 2) * lb.v;
     lbTop.style.height = lbBot.style.height = bar.toFixed(1) + 'px';
+    phoneEl.style.marginBottom = bar.toFixed(1) + 'px';          // keep the phone clear of the lower bar
     // subtitle pages; placement centred in the lower bar when it fits
     if (sub && !subSample && !Game.paused && sub.i < sub.pages.length - 1) { sub.t += dt * Game.timeScale; if (sub.t >= sub.ends[sub.i]) { sub.i++; renderSub(); } }
     if (subEl._o > 0) { const h = subEl.offsetHeight; subEl.style.bottom = (bar > h + 14 ? (bar - h) / 2 : Math.max(innerHeight * 0.07, bar + 10)).toFixed(1) + 'px'; }

@@ -1,7 +1,8 @@
 // ============================================================================
 // Chars — character factory, skeleton, face rig, clothing, hair, props, cast definitions,
 // and procedural animation (locomotion, poses, gestures, paired anims). Owned by: chars agent.
-// Implementation: 150_chars (this: API, cast, runtime) · 155_charbody (skeleton, skinned body, head) ·
+// Implementation: 150_chars (this: API, cast, runtime) · 154_charhead (SDF-sculpted head, expression morphs) ·
+// 155_charbody (skeleton, skinned body; extras merge the head into one mesh with a painted-in face) ·
 // 156_chardress (outfits, accessories) · 157_charhair · 158_charpaint (atlas) · 159_charface (face canvas + eye shader) ·
 // 160_anim (poses, gaits, look-at, springs) · 162_gest (gestures, IK, paired anchors) · 163_charkit (seeded extras) · 164_charprops (props, badge) ·
 // 166_charinf (infected looks) · 168_quad (horse, deer)
@@ -96,9 +97,9 @@ const Chars = (() => {
       outfit: [{ k: 'polo', color: POLO_YELLOW, logo: true, badge: 'LUKE — Sales Consultant', fab: 'pique', loose: 1.2 },
         { k: 'pants', color: '#252a33', style: 'jeans', fab: 'denim' }, { k: 'shoes', style: 'sneaker', color: '#3a3a3a', accent: '#d8d0c0' }],
       acc: [{ k: 'cap', color: '#1d1d1f', text: 'yes', back: true, ink: '#f2c200' }] },
-    bub: { name: 'Bub', H: 1.53, sex: 'f', age: 13, child: true, named: true, tics: ['chew_sleeve'], headSize: 0.97,
+    bub: { name: 'Bub', H: 1.53, sex: 'f', age: 13, child: true, named: true, tics: ['chew_sleeve'], headSize: 0.92,
       build: { sh: 0.86, ch: 0.9, wa: 0.95, hi: 0.86, arm: 0.84, leg: 0.9, bust: 0.1, neck: 0.9, legLen: 1.02 },
-      head: { jaw: 0.86, chin: 0.9, nose: 0.8, noseW: 0.9, cheek: 0.95, full: 0.35, lips: 1.05, eyeW: 0.0152, ipd: 0.058, mouthW: 0.0225, hairline: 0.064 },
+      head: { jaw: 0.86, chin: 0.9, nose: 0.8, noseW: 0.9, cheek: 0.95, full: 0.35, lips: 0.92, eyeW: 0.0156, ipd: 0.058, mouthW: 0.0215, hairline: 0.064 },
       skin: '#e9bb9b', iris: '#6b4c2c', freckles: 0.35, rosy: 0.9, braces: true, browThick: 0.8,
       hair: { style: 'buns', color: '#5c3a22' },
       outfit: [{ k: 'tee', color: '#27324a', loose: 2.2, sleeve: 0.46, hem: 0.405, print: 'REP OF THE YEAR\nOPTUS REDCLIFFE', ink: '#f2c200', dirt: 0.1 },
@@ -115,7 +116,7 @@ const Chars = (() => {
       build: { sh: 1.2, ch: 1.15, wa: 1.2, fat: 0.35, belly: 0.45, musc: 0.3, neck: 1.2, arm: 1.1, leg: 1.08 },
       head: { jaw: 1.2, chin: 1.0, width: 1.08, nose: 1.05, noseW: 1.15, cheek: 1.0, full: 0.6, hairline: 0.07 },
       skin: '#8a5a3c', iris: '#3a2618', stubble: 0.5, rosy: 0.3,
-      hair: { style: 'buzz', color: '#15110e' }, beard: { style: 'full', color: '#1a1410' },
+      hair: { style: 'buzz', color: '#15110e' }, beard: { style: 'full', color: '#2a211b' },
       outfit: [{ k: 'polo', color: '#16181b', tuck: true, text: 'SECURITY', logo: false }, { k: 'pants', color: '#141518', style: 'cargo' }, { k: 'shoes', style: 'boot', color: '#101010' }],
       acc: [{ k: 'belt', color: '#0e0e0e' }, { k: 'earpiece' }, { k: 'radio', phi: -0.55 }] },
     neighbour: { name: 'Neighbour', H: 1.76, sex: 'm', age: 61, tics: [], hold: 'phone',
@@ -144,9 +145,9 @@ const Chars = (() => {
       acc: [{ k: 'belt', color: '#2a1e16' }, { k: 'holster' }, { k: 'lanyard', text: 'CHASE — Senior Consultant — Ask me about upgrading!', worn: 1, beads: ['#f2f0e8', '#1c1c1c', '#e8c040', '#d83a3a', '#3a6ad8', '#f2f0e8', '#1c1c1c', '#e8c040', '#8a3ad8'], part: 'lanyard' }] },
     chloe: { name: 'Chloe', H: 1.6, sex: 'f', age: 18, named: true, tics: ['click_cutter', 'push_sweatband'], quick: true,
       build: { sh: 0.95, ch: 0.95, wa: 0.95, hi: 0.95, arm: 0.95, leg: 0.97, bust: 0.55 },
-      head: { jaw: 0.9, chin: 0.94, nose: 0.82, noseW: 0.95, cheek: 1.02, lips: 1.1, eyeW: 0.0157, ipd: 0.06, hairline: 0.06 },
+      head: { jaw: 0.9, chin: 0.94, nose: 0.82, noseW: 0.95, cheek: 1.02, lips: 1.05, eyeW: 0.0157, ipd: 0.06, hairline: 0.071 },
       skin: '#e8b996', iris: '#5a7a4a', freckles: 0.75, rosy: 0.75, browNick: 1, browThick: 0.85, browColor: '#4a2a18',
-      hair: { style: 'ponytail', color: '#6b3a22', len: 0.2, seed: 21 },
+      hair: { style: 'ponytail', color: '#6b3a22', len: 0.2, seed: 21, temple: 0.012 },
       outfit: [{ k: 'polo', color: TRAINEE_YELLOW, loose: 1.55, hem: 0.47, logo: true, badge: 'CHLOE — TRAINEE — Still learning! Please be patient :)', badgeAt: -0.26 },
         { k: 'hoodie', color: '#4a5236', gap: 0.42, dirt: 0.5, hem: 0.505 }, { k: 'pants', color: '#3e5a7c', fab: 'denim', len: 0.9, roll: true, rollColor: '#7a94b0', taper: 0.4, dirt: 0.4 },
         { k: 'shoes', style: 'sneaker', color: '#d8d4cc', accent: '#9a3a3a', dirt: 0.9 }],
@@ -274,6 +275,9 @@ const Chars = (() => {
     lurker: { gen: (R, s) => Object.assign(CharKit.civ(R, { worn: 2 }), { inf: 'lurker' }) },
     clicker: { gen: (R, s) => Object.assign(CharKit.civ(R, { worn: 3 }), { inf: 'clicker' }) },
     bloatware: { gen: (R, s) => Object.assign(CharKit.civ(R, { worn: 3, big: true }), { inf: 'bloatware' }) },
+    // ---- Animals (built by 168_quad; same Character API) ---------------------------------------------
+    horse: { name: 'Horse', quad: true },
+    deer: { name: 'Deer', quad: true },
   };
   // chloe_winter: puffer over everything, beanie, the bow slung across her back
   defs.chloe_winter = Object.assign({}, defs.chloe, {
@@ -302,7 +306,7 @@ const Chars = (() => {
     if (v) look = Object.assign({}, look, typeof v === 'function' ? v(look) : v);
     look.seed = seed;
     look.key = defId + ':' + (def && def.gen ? seed : '') + ':' + (o.variant || '');
-    look.atlas = look.atlas || (look.named ? 1024 : def && def.gen ? 256 : 512);
+    look.atlas = look.atlas || (look.named ? 1024 : 512);
     look.faceRes = look.faceRes || (look.named ? 512 : def && def.gen ? 256 : 512);
     look.fem = look.fem ?? (look.sex === 'f' ? 1 : 0);
     if (look.hair && look.head && look.head.hairline != null && look.hair.line == null) look.hair = Object.assign({}, look.hair, { line: look.head.hairline });
@@ -334,7 +338,7 @@ const Chars = (() => {
     const bodyMat = CharPaint.bodyMaterial(at);
     B.body.material = bodyMat;
     const face = CharFace.create(B, look);
-    B.head.material = face.mat;
+    if (B.head) B.head.material = face.mat;
     const root = B.root;
     root.name = 'char:' + (o.name || defId);
     Engine.scene.add(root);
@@ -436,12 +440,12 @@ const Chars = (() => {
     },
     badge(value, where = 'forearm_l') { CharProps.badge(this, value, where); },
     phoneGlow(on, o = {}) { CharProps.phoneGlow(this, on, o); },
-    setPart(name, state) { this.parts[name] = state; this.look = Object.assign({}, this.look, { parts: Object.assign({}, this.parts) }); CharBody.rebuild(this.B, this.look); this.B.atlas.paint(); },
+    // appearance lives in this.B.look (this.look is the gaze state)
+    setPart(name, state) { this.parts[name] = state; CharBody.rebuild(this.B, Object.assign({}, this.B.look, { parts: Object.assign({}, this.parts) })); this.B.atlas.paint(); },
     outfit(variant) {
-      const look = resolveLook(this.def.id, { seed: this.look.seed, variant });
-      this.look = Object.assign(look, { parts: Object.assign({}, this.parts) });
-      this.B.atlas = CharPaint.atlas(this.look, this.D);
-      CharBody.rebuild(this.B, this.look); this.B.atlas.paint();
+      const look = Object.assign(resolveLook(this.def.id, { seed: this.B.look.seed, variant }), { parts: Object.assign({}, this.parts) });
+      this.B.atlas = CharPaint.atlas(look, this.D);
+      CharBody.rebuild(this.B, look); this.B.atlas.paint();
       this.bodyMat.map = this.B.atlas.tex; this.bodyMat.needsUpdate = true;
     },
     dispose() {
@@ -451,7 +455,7 @@ const Chars = (() => {
       CharProps.phoneGlow(this, false);
       this.stop();
       if (this.root.parent) this.root.parent.remove(this.root);
-      this.B.body.geometry.dispose(); this.B.head.geometry.dispose(); this.bodyMat.dispose(); CharFace.dispose(this.face);
+      CharBody.dispose(this.B); this.bodyMat.dispose(); CharFace.dispose(this.face);
       if (this.glowMesh) this.glowMesh.geometry.dispose();
       const i = all.indexOf(this); if (i >= 0) all.splice(i, 1);
     },
@@ -506,7 +510,7 @@ const Chars = (() => {
   const _cam = new V3();
   function update(dt) {
     Engine.camera.getWorldPosition(_cam);
-    CharProps.tick(dt); CharInf.tick(dt);
+    CharProps.tick(dt); CharInf.tick(dt); CharFace.frame();
     for (const c of all) {
       if (!c.root.visible) continue;
       c.update(dt);
@@ -531,7 +535,7 @@ const Chars = (() => {
 
   function preload() {
     const ids = ['chase_young', 'luke_young', 'bub', 'customer', 'security_guard', 'neighbour', 'soldier'].filter(id => defs[id]);
-    return ids.map(id => () => { const look = resolveLook(id, {}); const B = CharBody.build(look); B.atlas.paint(); B.body.geometry.dispose(); B.head.geometry.dispose(); });
+    return ids.map(id => () => { const look = resolveLook(id, {}); const B = CharBody.build(look); B.atlas.paint(); CharBody.dispose(B); });
   }
 
   return { defs, VARIANTS, create, update, all, preload, get props() { return CharProps.names; }, resolveLook, COLORS: { POLO_YELLOW, TRAINEE_YELLOW, FADED_CREAM } };

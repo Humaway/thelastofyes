@@ -420,17 +420,38 @@ const CharDress = (() => {
       prim(ctx, box(0.032, 0.024, 0.02, 0.004), headM(ctx, [0, 0.062, 0.088]), W1('head'), '#303436', { rough: 0.5 });
       prim(ctx, new THREE.CircleGeometry(0.009, 12), headM(ctx, [0, 0.062, 0.0985]), W1('head'), '#f4f0e0', { rough: 0.1, c: new THREE.Color(1.6, 1.6, 1.5) });
     },
-    gas_mask(ctx, a) {                                                 // COMMS respirator: rubber face piece, two lenses, side filter, straps
-      const D = ctx.D, col = a.color || '#1c1d1c';
-      headShell(ctx, 'mask', { t: 'cloth', fab: 'rubber', color: col }, () => -0.123, (phi, t) => 0.007 + 0.012 * Math.max(0, Math.cos(phi)) * (1 - t) + 0.01 * gauss(phi, 0.4) * gauss(t - 0.25, 0.2), { px: [128, 64], rows: 8, flat: 0.35, rough: 0.55,
-        skip: (i, j) => { const phi = (j + 0.5) / 29 * TAU - Math.PI; const y = lerp(-0.123, 0.126, Math.pow((i + 0.5) / 6, 0.8)); return Math.cos(phi) < 0.35 || y > 0.035; } });
-      for (const sd of [1, -1]) {
-        prim(ctx, cyl(0.02, 0.02, 0.012, 16), headM(ctx, [sd * 0.031, 0.002, 0.098], [Math.PI / 2, 0, 0]), W1('head'), '#161616', { rough: 0.4 });
-        prim(ctx, new THREE.CircleGeometry(0.017, 16), headM(ctx, [sd * 0.031, 0.002, 0.1045]), W1('head'), '#3a4650', { rough: 0.05, c: new THREE.Color(0.7, 0.8, 0.9) });
-      }
-      prim(ctx, cyl(0.022, 0.024, 0.036, 14), headM(ctx, [0.038, -0.085, 0.085], [Math.PI / 2, 0.5, 0.25]), W2('head', 'jaw', 0.5), '#3a3c38', { rough: 0.6 });
-      prim(ctx, cyl(0.016, 0.018, 0.024, 12), headM(ctx, [0, -0.075, 0.108], [Math.PI / 2, 0, 0]), W2('head', 'jaw', 0.5), '#2a2b2a', { rough: 0.6 });
-      strap(ctx, '#1a1a1a', 0.03, 0.01, hairOff(ctx) + 0.004, -0.02); strap(ctx, '#1a1a1a', -0.04, 0.01, 0.01, 0.02);
+    gas_mask(ctx, a) {                                                 // COMMS respirator: a rubber face piece over a smooth dome (nose inside),
+      const D = ctx.D, col = a.color || '#1c1d1c', { mb, A } = ctx, hs = D.hs;  // one dark visor, the voicemitter, a side filter, the harness
+      const r = A.alloc('mask', 128, 64, { t: 'cloth', fab: 'rubber', color: col }), rv = A.alloc('visor', 32, 16, { t: 'plain', color: '#1e262c' });
+      const o = [0, 0, 0, 0, 0, 0], q = new V3(), p = new V3();
+      const dome = (phi, y) => {                                        // outward hit of the ray with an ellipsoid shell in front of the face
+        CharHead.rayOf(phi, y, o);
+        const [cx, cy, cz, ax, ay, az] = [0, -0.042, 0.0, 0.074, 0.098, 0.121];
+        const ox = (o[0] - cx) / ax, oy = (o[1] - cy) / ay, oz = (o[2] - cz) / az, dx = o[3] / ax, dy = o[4] / ay, dz = o[5] / az;
+        const qa = dx * dx + dy * dy + dz * dz, qb = 2 * (ox * dx + oy * dy + oz * dz), qc = ox * ox + oy * oy + oz * oz - 1, disc = qb * qb - 4 * qa * qc;
+        return disc > 0 ? (-qb + Math.sqrt(disc)) / (2 * qa) : 0;
+      };
+      const at = (phi, y, lift) => {                                    // face-piece point: the dome, or the face + lift where the face is fuller
+        const rf = CharHead.sample(D.sdf, phi, y, p), rr = Math.max(rf + lift, dome(phi, y) * sstep(1.3, 0.9, Math.abs(phi)) + (rf + lift) * (1 - sstep(1.3, 0.9, Math.abs(phi))));
+        CharHead.rayOf(phi, y, o);
+        return q.set(o[0] + o[3] * rr, o[1] + o[4] * rr, o[2] + o[5] * rr).multiplyScalar(hs).add(D.headO).clone();
+      };
+      const rows = 12, cols = 26, top = phi => 0.042 - 0.03 * sstep(0.6, 1.3, Math.abs(phi));
+      surf(mb, rows, cols, (i, j) => {
+        const t = i / (rows - 1), phi = (j / (cols - 1) * 2 - 1) * 1.32, y = lerp(-0.13, top(phi), t), rim = Math.min(t, 1 - t, 1 - Math.abs(phi) / 1.32);
+        const [u, v] = A.uv(r, j / (cols - 1), t);
+        return { p: at(phi, y, 0.002 + 0.004 * sstep(0, 0.12, rim)), u, v, w: y < -0.08 ? W2('head', 'jaw', 0.5) : W1('head') };
+      }, { rough: 0.55 });
+      surf(mb, 5, 15, (i, j) => {                                       // visor
+        const phi = (j / 14 * 2 - 1) * 0.78, y = lerp(-0.019, 0.03, i / 4) - 0.006 * (phi * phi);
+        const [u, v] = A.uv(rv, j / 14, i / 4);
+        return { p: at(phi, y, 0.009), u, v, w: W1('head') };
+      }, { rough: 0.08 });
+      prim(ctx, cyl(0.017, 0.02, 0.022, 16), headM(ctx, [0, -0.077, 0.118], [Math.PI / 2, 0, 0]), W2('head', 'jaw', 0.5), '#2a2b2a', { rough: 0.6 });
+      prim(ctx, cyl(0.011, 0.011, 0.006, 12), headM(ctx, [0, -0.077, 0.131], [Math.PI / 2, 0, 0]), W2('head', 'jaw', 0.5), '#111212', { rough: 0.5 });
+      prim(ctx, cyl(0.026, 0.028, 0.034, 16), headM(ctx, [0.058, -0.08, 0.066], [Math.PI / 2, 0.75, 0.2]), W2('head', 'jaw', 0.5), '#3a3c38', { rough: 0.6 });
+      prim(ctx, cyl(0.02, 0.02, 0.004, 14), headM(ctx, [0.071, -0.082, 0.078], [Math.PI / 2, 0.75, 0.2]), W2('head', 'jaw', 0.5), '#1a1b1a', { rough: 0.5 });
+      strap(ctx, '#1a1a1a', 0.034, 0.012, hairOff(ctx) + 0.004, -0.02); strap(ctx, '#1a1a1a', -0.05, 0.012, 0.008, 0.03);
     },
     tie_headband(ctx, a) {                                             // the Closer: his tie knotted round his head, tail down the back
       const D = ctx.D, c = a.color || '#a82a2a';

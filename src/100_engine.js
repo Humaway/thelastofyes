@@ -52,6 +52,31 @@ const Engine = (() => {
 
   const dof = { enabled: false, target: null, focus: 5, aperture: 0.0025, maxblur: 0.008 };
 
+  // Cinematic cheats the Director drives in long-lens shots: a soft key light on the subject's face (always in the
+  // scene so the light count never changes) and a shadow frustum pulled tight around the subject for crisp face shadows.
+  let key = null, keyTarget = 0, sun = null, sunSave = null;
+  const kv = new THREE.Vector3(), kd = new THREE.Vector3();
+  function cineKey(subject, camPos, strength = 0.7, color = 0xffe4c8) {
+    keyTarget = subject ? strength : 0;
+    if (!subject) return;
+    kd.subVectors(camPos, subject).setY(0).normalize().applyAxisAngle(THREE.Object3D.DEFAULT_UP, 0.7);
+    key.position.copy(subject).addScaledVector(kd, 1.3); key.position.y += 0.4;
+    key.color.set(color);
+  }
+  const inScene = o => { while (o) { if (o === scene) return true; o = o.parent; } return false; };
+  function shadowFocus(center, radius = 3) {
+    if (!sun || !inScene(sun)) { sun = null; sunSave = null; scene.traverse(o => { if (!sun && o.isDirectionalLight && o.castShadow) sun = o; }); }
+    if (!sun) return;
+    const cam = sun.shadow.camera;
+    if (!center) { if (sunSave) { sun.position.copy(sunSave.p); sun.target.position.copy(sunSave.t); Object.assign(cam, sunSave.b); cam.updateProjectionMatrix(); sunSave = null; } return; }
+    if (!sunSave) sunSave = { p: sun.position.clone(), t: sun.target.position.clone(), b: { left: cam.left, right: cam.right, top: cam.top, bottom: cam.bottom } };
+    const step = radius / 256;                                   // snap to a coarse grid so a tracking shot doesn't shimmer
+    kv.set(Math.round(center.x / step) * step, Math.round(center.y / step) * step, Math.round(center.z / step) * step);
+    if (sun.target.parent) sun.target.parent.worldToLocal(kv);
+    sun.position.copy(kv).add(sunSave.p).sub(sunSave.t); sun.target.position.copy(kv);
+    cam.left = cam.bottom = -radius; cam.right = cam.top = radius; cam.updateProjectionMatrix();
+  }
+
   function init(parent) {
     renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
     renderer.setPixelRatio(1);
@@ -67,6 +92,7 @@ const Engine = (() => {
     camera = new THREE.PerspectiveCamera(70, 16 / 9, 0.05, 1200);
     scene.add(camera);
     pmrem = new THREE.PMREMGenerator(renderer);
+    key = new THREE.PointLight(0xffe4c8, 0, 4, 2); scene.add(key);
 
     composer = new EffectComposer(renderer);
     renderPass = new RenderPass(scene, camera);
@@ -188,6 +214,7 @@ const Engine = (() => {
   let time = 0;
   function render(dt, measure = true) {
     time += dt;
+    key.intensity = U.damp(key.intensity, keyTarget, 6, dt);
     if (gradeTo) { gradeT += dt; const t = U.clamp(gradeT / gradeDur); mixGrade(gradeFrom, gradeTo, U.ease.inOut(t)); if (t >= 1) gradeTo = null; applyGrade(); }
     gradePass.material.uniforms.uTime.value = time;
     updateDof();
@@ -196,7 +223,7 @@ const Engine = (() => {
   }
 
   return {
-    init, render, resize, setQuality, setGrade, setEnv, grade, dof, applyGrade,
+    init, render, resize, setQuality, setGrade, setEnv, grade, dof, applyGrade, cineKey, shadowFocus,
     get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; },
     get overlay() { return overlay; }, get composer() { return composer; }, get size() { return size; },
     get uniforms() { return gradePass.material.uniforms; }, get time() { return time; },

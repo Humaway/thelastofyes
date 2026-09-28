@@ -12,7 +12,7 @@ const root = new URL('..', import.meta.url).pathname;
 const a = process.argv.slice(2), arg = (k, d) => { const i = a.indexOf('--' + k); return i < 0 ? d : a[i + 1]; };
 const outHtml = root + `out/build-${process.pid}.html`;
 mkdirSync(root + 'out', { recursive: true });
-execFileSync('node', [root + 'tools/build.mjs', outHtml], { stdio: 'inherit' });
+execFileSync('node', [root + 'tools/build.mjs', outHtml, '--dev'], { stdio: 'inherit' });
 const W = +arg('w', 1280), H = +arg('h', 720);
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
 const page = await browser.newPage({ viewport: { width: W, height: H } });

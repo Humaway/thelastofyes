@@ -15,27 +15,32 @@
 //   Director.release(dur = 1.2)   end an exit {hold}: blend to gameplay and retract the letterbox
 //
 // DETAILS
-//   Start: blend 0.8 s from the live camera (start.blend: s) or cut (start.cut, and whenever the live camera is > 40 m from
-//     the first shot, e.g. right after an area load). Cast members visible in the outgoing frame walk to marks < 3.5 m away
-//     during the blend; the rest are placed at once (off-screen) or at mid-blend. A cast id that is neither an actor nor an
+//   Start: blend 0.8 s from the live camera (start.blend: s) or cut (start.cut, and whenever the blend would be ugly: the live
+//     camera is > 40 m from the first shot (right after an area load), turns > 110° or its path crosses a character).
+//     Cast members visible in the outgoing frame walk to marks < 3.5 m away during the blend; the rest are placed at once
+//     (off-screen) or at mid-blend. A cast id that is neither an actor nor an
 //     area char is created: from `def` as an area char, else as a persistent actor when Chars.defs has the id.
 //     scene.grade / music / silence / amb apply at start; the letterbox slides in over 0.6 s.
 //   Timing: line pause default 0.3 s, shot hold default 0.5 s; a shot with no lines, dur or timed content lasts 2 s.
 //     slowmo {scale, dur}: dur is real seconds; everything else is scene time (slowed with it).
 //   Actions: sit/stand/kneel/lie/pose take an optional `at` (walk there, turn to the marker's yaw, then pose); walkTo/runTo
-//     take `yaw` (turn on arrival); fire takes `sfx` (default 'gunshot'); give/take move a named prop between right hands.
+//     take `yaw` (turn on arrival); fire takes `sfx` (default 'gunshot'); give/take move a named prop between right hands;
+//     gesture passes its options through ({hold: true} keeps it until a gesture action with name: null).
 //   Exit: {blend:'gameplay', dur:1.2} (default: Play.snapCamera(), then blend to the live gameplay or manual camera while
-//     the letterbox retracts; the flow re-enables control) · {cut:true} · {fade:'black'|'white', dur:1} (fades, then cuts
-//     to gameplay under the colour; the flow fades back in with G.fade('none')) · {hold:true} (keeps the last frame and the
-//     letterbox until the next scene or Director.release()).
+//     the letterbox retracts; the flow re-enables control; when the last shot looks at the player's front, the gameplay camera
+//     takes the shot's heading (Play.camYaw) so the blend never swings through the player) · {cut:true} ·
+//     {fade:'black'|'white', dur:1} (fades, then cuts to gameplay under the colour; the flow fades back in with
+//     G.fade('none')) · {hold:true} (keeps the last frame and the letterbox until the next scene or Director.release()).
 //   scene.end: { place:{who: at | {at, yaw}}, pose:{who: name}, flags:{…}, call:{hook, args} } — at the end and on skip.
 //   Skip: hold Space / pad A 1.5 s (UI.skipRing) when skippable !== false, or the scene was seen, or play(id,{skippable:true}).
 //     Remaining state-changing actions apply instantly (place, walkTo/runTo -> destination, turnTo, poses, props, give/take,
-//     attach/detach, show/hide, badge, decal, phoneGlow) and state cues (music, amb, grade, look, loop, stopLoop, ui);
-//     lines, gestures, emotes, looks, sfx, shake, slowmo, title and call are dropped (put essentials in scene.end).
+//     attach/detach, show/hide, badge, decal, phoneGlow, gesture releases) and state cues (music, amb, grade, look, loop, stopLoop,
+//     ui); lines, gestures, emotes, looks, sfx, shake, slowmo, title and call are dropped (put essentials in scene.end).
 //   Lines: a line still playing when a shot with a fixed `dur` ends carries into the next shot (L-cut); that shot's lines
 //     wait for it. Before speaking, the speaker looks at `to` or the nearest cast member (eyes lead); cast members within
 //     6 m look at the speaker; an emote:'lying' line looks past the listener. A lookAt action pins that character's gaze.
+//   scene.key: false | {strength=0.7, color}: in shots of 40 mm and longer the subject gets a soft face key light and a
+//     tight shadow frustum (Engine.cineKey / Engine.shadowFocus); false turns both off (e.g. for pitch-dark scenes).
 //   Focus: default = the speaker while on screen (never an ots foreground shoulder), else the shot's subject.
 //     'who' | spec | { rack:[a, b], at, dur } | null (no DOF). Aperture follows lens and focus distance.
 //   CamSpec: lens default per type (35; crane 28; ots 50; two_shot 40; close 65; extreme_close 100, hands/badge 85, phone 50;
@@ -45,7 +50,8 @@
 //     ots {over, on} / two_shot {a, b}: `side` is literal for the first shot of a pair in a scene; later ots / two_shot /
 //       close shots on that pair stay on the same side of the line (180° rule), so the reverse shot flips shoulders itself.
 //     close / extreme_close: shot from the partner's side when the character is in an exchange, else from its front;
-//       distance from the lens unless `dist`. extreme_close parts: eyes hands hand_r badge phone.
+//       distance from the lens unless `dist`. extreme_close parts: eyes hands hand_r badge phone; `badge` is the infection
+//       Badge (c.badge) when one is shown, framed square-on, else the name badge.
 //     follow: offset [x right, y up, z forward] from the feet (default [0.55, 1.75, -2.4]), lookAhead 1.5 m.
 //     Computed positions (orbit, ots, two_shot, close, extreme_close, follow) are pulled in front of walls (World 'cam').
 //   Cue kinds are matched in this order: music sfx loop stopLoop amb title shake slowmo grade look ui letterbox call fade
@@ -54,14 +60,14 @@
 // ============================================================================
 const Director = (() => {
   const LENS = { crane: 28, ots: 50, two_shot: 40, close: 65, extreme_close: 100, pov: 40 };
-  const XC = { eyes: [0.13, 0.14], hands: [0.34, 0], hand_r: [0.24, 0], badge: [0.2, 0.35], phone: [0.2, 0] };  // frame height m, angle off the partner line
+  const XC = { eyes: [0.16, 0.14], hands: [0.34, 0], hand_r: [0.24, 0], badge: [0.2, 0.35], phone: [0.2, 0] };  // frame height m, angle off the partner line
   const AUTO = ['orbit', 'ots', 'two_shot', 'close', 'extreme_close', 'follow'];   // computed positions get camera collision
   const KINDS = ['music', 'sfx', 'loop', 'stopLoop', 'amb', 'title', 'shake', 'slowmo', 'grade', 'look', 'ui', 'letterbox', 'call', 'fade'];
   const UP = new THREE.Vector3(0, 1, 0);
   const v3 = () => new THREE.Vector3();
   const mkPose = () => ({ pos: v3(), quat: new THREE.Quaternion(), fov: 50 });
   const shotPose = mkPose(), mixPose = mkPose(), basePose = mkPose();
-  const m4 = new THREE.Matrix4(), eul = new THREE.Euler(), rq = new THREE.Quaternion();
+  const m4 = new THREE.Matrix4(), eul = new THREE.Euler(), rq = new THREE.Quaternion(), seg = new THREE.Line3();
   const C = v3(), T = v3(), A = v3(), B = v3(), D = v3(), subj = v3(), focusPt = v3(), tv = v3(), fo = v3(), lie = v3();
   let S = null, manualPose = null, held = null, blend = null, shake = null, slow = null, skipT = 0, clock = 0, fadeDof = false, heldDof = false;
   const loops = {};
@@ -159,22 +165,29 @@ const Director = (() => {
       case 'two_shot': {
         eyes(c.a, A); eyes(c.b, B); subj.addVectors(A, B).multiplyScalar(0.5);
         D.subVectors(B, A).setY(0);
-        const w = D.length(), s = lineSide(c.a, c.b, want), dist = c.dist ?? Math.max(1.6, (w + 0.9) / (2 * tn * Engine.camera.aspect));
+        const w = D.length(), s = lineSide(c.a, c.b, want), dist = c.dist ?? Math.max(1.6, (w + 1.1) / (2 * tn * Engine.camera.aspect));
         D.normalize();
         const k = Math.cos(0.26), n = Math.sin(0.26);   // 15° toward a, so b's face opens to the camera
         C.set(-D.z * s * k - D.x * n, 0, D.x * s * k - D.z * n).multiplyScalar(dist).add(subj);
+        D.subVectors(A, C).normalize().add(tv.subVectors(B, C).normalize()).setY(0).normalize();   // bisector: a is nearer, so it projects wider
+        subj.set(C.x + D.x * dist, subj.y, C.z + D.z * dist);
         nx = 0; ny = 0.22 * vis; break;
       }
       case 'close': case 'extreme_close': {
-        const W = who(c.who), xc = type === 'close' ? [0.56, 0.38] : XC[part];
-        if (type === 'close' || part === 'eyes') W.point('eyes', subj);
+        const W = who(c.who), mark = type === 'extreme_close' && part === 'badge' && W.badgeObj && W.badgeObj.mesh;
+        const xc = type === 'close' ? [0.56, 0.38] : mark ? [0.16, 0] : XC[part];
+        if (mark) mark.getWorldPosition(subj);
+        else if (type === 'close' || part === 'eyes') W.point('eyes', subj);
         else if (part === 'hands') W.point('hand_l', subj).add(W.point('hand_r', A)).multiplyScalar(0.5);
         else W.point(part === 'phone' ? 'hand_r' : part, subj);
         const [dir, s] = coverDir(D, c.who, subj, xc[1], want), dist = c.dist ?? xc[0] / (2 * vis * tn);
         nx = 0; ny = 0;
-        if (type === 'extreme_close' && part === 'phone') {   // insert along the eye line, just off the shoulder
-          W.point('eyes', A).sub(subj).normalize(); B.set(-A.z * s, 0, A.x * s);
-          C.copy(A).addScaledVector(B, 0.22).normalize().multiplyScalar(dist).add(subj);
+        if (mark) {   // along the Badge's normal, pulled toward the character's front and slightly above
+          mark.getWorldQuaternion(rq); A.set(0, 0, 1).applyQuaternion(rq);
+          C.copy(dir).multiplyScalar(0.8).add(A).addScaledVector(UP, 0.35).normalize().multiplyScalar(dist).add(subj);
+        } else if (type === 'extreme_close' && part === 'phone') {   // over the shoulder, down the eye line onto the screen
+          W.point('eyes', A); B.subVectors(A, subj).normalize();
+          C.set(-B.z * s, 0, B.x * s).normalize().multiplyScalar(0.28).add(A).addScaledVector(B, 0.18); C.y += 0.06;
         } else if (type === 'extreme_close' && part !== 'eyes' && part !== 'badge') {   // hands: from above and in front
           C.copy(dir).multiplyScalar(0.8).addScaledVector(UP, 0.6).normalize().multiplyScalar(dist).add(subj);
         } else {
@@ -239,6 +252,14 @@ const Director = (() => {
     }
     if (Math.abs(cam.fov - p.fov) > 1e-4) { cam.fov = p.fov; cam.updateProjectionMatrix(); }
     cam.updateMatrixWorld();
+    // long-lens scene shots: a soft face key and a tight shadow frustum on the subject (scene.key: false | {strength, color})
+    const lensMM = 12 / Math.tan(cam.fov * Math.PI / 360), kk = S && S.def.key;
+    if (S && lensMM >= 40 && kk !== false) {
+      focusOf(focusPt);
+      const d = cam.position.distanceTo(focusPt);
+      Engine.shadowFocus(focusPt, U.clamp(d * 0.7 + 1.2, 2, 6));
+      Engine.cineKey(focusPt, cam.position, kk?.strength ?? 0.7, kk?.color);
+    } else { Engine.shadowFocus(null); Engine.cineKey(null); }
     // depth of field: scenes only; fades in with the opening blend and out with the exit blend
     const dof = Engine.dof;
     const amt = S ? (S.shot.focus === null ? 0 : blend && blend.into ? k : 1) : held ? +heldDof : blend && blend.out && fadeDof ? 1 - k : 0;
@@ -248,8 +269,8 @@ const Director = (() => {
     if (S) focusOf(focusPt);
     const dist = Math.max(0.3, cam.position.distanceTo(focusPt)), lens = 12 / Math.tan(cam.fov * Math.PI / 360);
     dof.target = focusPt;
-    dof.aperture = 0.005 * (lens / 50) ** 2 / Math.max(0.6, dist) * amt;
-    dof.maxblur = U.clamp(lens * 0.00013, 0.003, 0.012) * amt;
+    dof.aperture = 0.0065 * (lens / 50) ** 2 / Math.max(0.6, dist) * amt;
+    dof.maxblur = U.clamp(lens * 0.00015, 0.004, 0.013) * amt;
     if (S && S.cutFocus) { dof.focus = dist; S.cutFocus = false; }
   }
 
@@ -326,6 +347,7 @@ const Director = (() => {
         quiet(c.pose(a.do === 'pose' ? a.name : a.do, a)); break;
       case 'give': handOver(c, who(a.to), a, true); break;
       case 'take': handOver(who(a.from), c, a, true); break;
+      case 'gesture': if (a.name == null) act(a); break;   // release a held gesture
       case 'die': case 'hold': case 'drop': case 'hug': case 'carry': case 'attach': case 'detach':
       case 'show': case 'hide': case 'badge': case 'decal': case 'phoneGlow': act(a); break;
     }
@@ -410,16 +432,24 @@ const Director = (() => {
     if (S.line && S.lines.length) return false;
     return S.st >= Math.max(S.minLen, S.lines.length ? S.lastEnd + (sh.hold ?? 0.5) : 0) && (S.st >= 2 || S.lines.length > 0 || S.minLen > 0);
   }
-  function castIn(cast, cut, bd) {
+  function castList(cast) {   // resolve (or create: straight onto the mark, never seen before) every cast member
+    const list = [];
     for (const id in cast || {}) {
       const e = cast[id] && cast[id].constructor === Object && cast[id].of == null ? cast[id] : { at: cast[id] };
-      let c = who(id);
+      let c = who(id), fresh = !c;
       if (!c && e.def) c = Game.area.char(e.def, { name: id });
       else if (!c && Chars.defs[id]) c = Game.actor(id);
       if (!c) { console.warn(`scene ${S.id}: no cast member ${id}`); continue; }
       S.chars.add(c);
+      if (fresh && e.at != null) placeAt(c, e.at, e.yaw);
+      list.push({ c, e, fresh });
+    }
+    return list;
+  }
+  function castIn(list, cut, bd) {
+    for (const { c, e, fresh } of list) {
       const settleIn = () => { if (e.pose) quiet(c.pose(e.pose)); };
-      if (e.at == null) { settleIn(); continue; }
+      if (e.at == null || fresh) { settleIn(); continue; }
       const dest = ground(e.at), yaw = e.yaw ?? (isMarker(e.at) ? mark(e.at).yaw : undefined), d = U.dist2(c.root.position, dest);
       if (cut || !seen(c)) { placeAt(c, e.at, e.yaw); settleIn(); }
       else if (d < 0.05) { if (yaw != null) quiet(c.turnTo(yaw, 0.5)); settleIn(); }
@@ -435,6 +465,10 @@ const Director = (() => {
     if (e.call) hook(e.call.hook, e.call.args);
   }
   function flushTimers() { for (const t of S.timers.splice(0)) t.fn(); }
+  function crosses(a, b) {   // does the straight camera path a -> b pass through a visible character?
+    seg.set(a, b);
+    return Chars.all.some(c => c.root.visible && ['head', 'chest'].some(n => seg.closestPointToPoint(c.point(n, tv), true, D).distanceTo(tv) < 0.6));
+  }
 
   function play(id, o = {}) {
     const s = CONTENT.scenes[id];
@@ -447,15 +481,16 @@ const Director = (() => {
         canSkip: o.skippable ?? (s.skippable !== false || Save.seen(id)),
         finalFade: s.shots.flatMap(sh => byT(sh.cues)).filter(k => kind(k) === 'fade').pop()?.fade };
       startShot(0);
-      let far = false;   // never blend across the world (first scene after an area load): cut instead
-      try { far = evalShot(0).pos.distanceTo(from.pos) > 40; } catch (e) { far = false; }
-      const cut = !!(s.start && s.start.cut) || far, bd = cut ? 0 : s.start?.blend ?? 0.8;
+      const cast = castList(s.cast);
+      let bad = false;   // cut instead of blending across the world (after an area load), through a character or turning around
+      try { const p = evalShot(0); bad = p.pos.distanceTo(from.pos) > 40 || p.quat.angleTo(from.quat) > 1.9 || crosses(from.pos, p.pos); } catch (e) { bad = false; }
+      const cut = !!(s.start && s.start.cut) || bad, bd = cut ? 0 : s.start?.blend ?? 0.8;
       if (s.grade) Engine.setGrade(s.grade, bd);
       if (s.music === 'stop') Audio.stopMusic(2); else if (s.music) Audio.music(s.music);
       if (s.silence) Audio.silence(true, 1.5);
       if (s.amb) Audio.amb(s.amb, 2);
       UI.letterbox(s.letterbox !== false, 0.6);
-      castIn(s.cast, cut, bd);
+      castIn(cast, cut, bd);
       for (const sh of s.shots) for (const x of [...(sh.lines || []), ...(sh.actions || [])]) { const c = who(x.who); if (c) S.chars.add(c); }
       S.follow = null;
       blend = cut ? null : { from, t: 0, dur: bd, into: true };
@@ -473,7 +508,11 @@ const Director = (() => {
     UI.skipRing(null);
     fadeDof = heldDof = Engine.dof.enabled;
     S = null;
-    if (Play.char) Play.snapCamera();
+    if (Play.char) {   // gameplay camera behind the player; when the last shot faces the player, keep its heading instead of swinging round
+      Play.snapCamera();
+      const h = Math.atan2(-Engine.camera.matrixWorld.elements[8], -Engine.camera.matrixWorld.elements[10]);
+      if (!ex.cut && !ex.fade && Math.abs(U.wrapAngle(h - Play.char.yaw)) > Math.PI / 2) Play.camYaw = h;
+    }
     if (ex.hold) held = snap();
     else if (ex.cut || ex.fade) { blend = null; UI.letterbox(false, 0); }
     else { const dur = ex.dur ?? 1.2; blend = { from: snap(), t: 0, dur, out: true }; UI.letterbox(false, Math.min(1, dur)); }
@@ -499,6 +538,10 @@ const Director = (() => {
     shake = null;
   }
 
+  function fire() {
+    while (S && S.ai < S.acts.length && (S.acts[S.ai].t || 0) <= S.st) act(S.acts[S.ai++]);
+    while (S && S.ci < S.cues.length && (S.cues[S.ci].t || 0) <= S.st) cue(S.cues[S.ci++]);
+  }
   function update(dt) {
     const real = dt / (Game.timeScale || 1);
     if (slow && (slow.t -= real) <= 0) { Game.timeScale = 1; slow = null; }
@@ -513,12 +556,11 @@ const Director = (() => {
     S.st += dt;
     for (const t of S.timers) t.t -= dt;
     for (let i = S.timers.length - 1; i >= 0; i--) if (S.timers[i].t <= 0) S.timers.splice(i, 1)[0].fn();
-    while (S && S.ai < S.acts.length && (S.acts[S.ai].t || 0) <= S.st) act(S.acts[S.ai++]);
-    while (S && S.ci < S.cues.length && (S.cues[S.ci].t || 0) <= S.st) cue(S.cues[S.ci++]);
+    fire();
     if (!S) return;
     runLines();
     if (!shotOver()) return;
-    if (S.idx + 1 < S.def.shots.length) return startShot(S.idx + 1);
+    if (S.idx + 1 < S.def.shots.length) { startShot(S.idx + 1); fire(); return; }   // t:0 content lands on the cut frame
     if (S.line) return;
     const ex = S.def.exit || {};
     if (ex.fade) { S.fadeOut = ex.dur ?? 1; quiet(UI.fade(ex.fade, S.fadeOut)); } else finish(false);
