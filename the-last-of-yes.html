@@ -1,0 +1,1533 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Last of Yes</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;user-select:none;-webkit-user-select:none}
+#app{position:fixed;inset:0}
+#app canvas{display:block;width:100%;height:100%}
+#ui{position:fixed;inset:0;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="ui"></div>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+// ===== 000_imports.js =====
+// THE LAST OF YES — single-file build. Sources live in src/*.js and are concatenated in filename order
+// into one module script by tools/build.mjs. See ARCHITECTURE.md for the module contracts.
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { Sky } from 'three/addons/objects/Sky.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { SimplexNoise } from 'three/addons/math/SimplexNoise.js';
+
+// ===== 010_config.js =====
+// ============================================================================
+// CONFIG, SETTINGS and U (shared math/util helpers). Owned by: core.
+// ============================================================================
+const PARAMS = new URLSearchParams(location.search);
+
+const CONFIG = {
+  version: 1,
+  dev: PARAMS.has('dev'),
+  fixedDt: 1 / 30,          // dev fast-forward step
+  maxDt: 1 / 15,            // clamp for long frames
+  quality: {
+    low:    { scale: 0.7, maxScale: 0.8, shadowMap: 1024, bloom: true,  fxaa: true, shadows: true, pixelRatioCap: 1 },
+    medium: { scale: 0.85, maxScale: 1,  shadowMap: 2048, bloom: true,  fxaa: true, shadows: true, pixelRatioCap: 1.5 },
+    high:   { scale: 1,   maxScale: 1,   shadowMap: 2048, bloom: true,  fxaa: true, shadows: true, pixelRatioCap: 2 },
+  },
+  maxActiveAI: 12,
+  aiFreezeDist: 60,
+};
+
+// Player-facing settings. Persisted by Save (Save.settings() merges stored values into this object).
+const SETTINGS = {
+  subtitles: true, subSize: 'M', subBg: 0.45, subNames: true,
+  difficulty: 'normal',               // 'story' | 'normal' | 'hard'
+  aimAssist: false, sens: 1, invertY: false, fov: 70,
+  shake: true, grain: true, motion: true,
+  quality: 'high',
+  vol: { master: 0.9, music: 0.8, sfx: 0.9, dialogue: 1, amb: 0.8 },
+  voice: false,                       // speechSynthesis for lines
+};
+
+// Shared helpers. Keep this small; module-specific helpers live inside their module closure.
+const U = (() => {
+  const TAU = Math.PI * 2;
+  const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const inv = (a, b, v) => (v - a) / (b - a);
+  const remap = (a, b, c, d, v) => lerp(c, d, clamp(inv(a, b, v)));
+  // frame-rate independent exponential smoothing
+  const damp = (a, b, lambda, dt) => lerp(a, b, 1 - Math.exp(-lambda * dt));
+  const smooth = t => t * t * (3 - 2 * t);
+  const ease = {
+    linear: t => t,
+    in: t => t * t,
+    out: t => 1 - (1 - t) * (1 - t),
+    inOut: t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2,
+    sine: t => 0.5 - 0.5 * Math.cos(Math.PI * t),
+    outBack: t => 1 + 2.70158 * Math.pow(t - 1, 3) + 1.70158 * Math.pow(t - 1, 2),
+  };
+  const wrapAngle = a => { a = (a + Math.PI) % TAU; if (a < 0) a += TAU; return a - Math.PI; };
+  const angleDamp = (a, b, lambda, dt) => a + wrapAngle(b - a) * (1 - Math.exp(-lambda * dt));
+  // Seeded PRNG (mulberry32). U.rng(seed) -> () => [0,1)
+  const rng = seed => { let s = (seed >>> 0) || 1; return () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; };
+  const hash = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+  const rand = rng(12345);                       // shared non-critical randomness
+  const range = (a, b, r = rand) => a + (b - a) * r();
+  const pick = (arr, r = rand) => arr[Math.floor(r() * arr.length)];
+  const v3 = (a, out = new THREE.Vector3()) => Array.isArray(a) ? out.set(a[0], a[1] ?? 0, a[2] ?? 0) : out.copy(a);
+  const yawTo = (from, to) => Math.atan2(to.x - from.x, to.z - from.z);   // yaw that faces +Z toward target
+  const fwd = (yaw, out = new THREE.Vector3()) => out.set(Math.sin(yaw), 0, Math.cos(yaw));
+  const dist2 = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+  const lensToFov = mm => 2 * Math.atan(24 / (2 * mm)) * 180 / Math.PI;   // 36x24mm sensor, vertical FOV
+  const words = s => (s.match(/\S+/g) || []).length;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  return { TAU, clamp, lerp, inv, remap, damp, smooth, ease, wrapAngle, angleDamp, rng, hash, rand, range, pick, v3, yawTo, fwd, dist2, lensToFov, words, sleep };
+})();
+
+// ===== 020_content.js =====
+// ============================================================================
+// CONTENT — all writing and data, kept apart from code.
+// Chapter files (021_*.js …) and level files (3xx_*.js) add to these tables.
+// ============================================================================
+const CONTENT = {
+  scenes: {},        // cutscene scripts, see ARCHITECTURE.md "Scene format"
+  talks: {},         // walk-and-talks + optional conversations: { lines:[{who,text,emote,pause}], resume, priority, optional }
+  barks: {},         // barks[speakerSet][category] = [lines]
+  levels: {},        // area definitions: { name, grade, fog, env, amb, surface, build(A) }
+  chapters: {},      // chapters[id] = { title, season, card, steps:[{ id, checkpoint, run: async G => {} }] }
+  chapterOrder: ['prologue', 'ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6', 'ch7'],
+  collectibles: { artifacts: [], lanyards: [], modules: [] },
+  remarks: {},       // Chloe's world remarks, remarks[id] = { text, emote }
+  tips: [],          // the 12 Sales Tips
+  grades: {},        // colour grades, see Engine.setGrade
+  hooks: {},         // named special behaviours callable from scenes: hooks[name](G, args)
+  dev: {},           // dev sandboxes: dev[name] = async G => {} (run with ?dev&test=name)
+  speakers: {},
+};
+
+// Speaker display names, subtitle colours, TTS voice profile [pitch, rate].
+// Anyone not listed uses their id upper-cased, colour #B0A8A0, voice [1, 1].
+CONTENT.speakers = {
+  chase:    { name: 'CHASE',    color: '#C9A94A', voice: [0.8, 0.9] },
+  chloe:    { name: 'CHLOE',    color: '#FFD400', voice: [1.25, 1.1] },
+  wai:      { name: 'WAI',      color: '#4FB3A9', voice: [0.95, 1.0] },
+  zane:     { name: 'ZANE',     color: '#7A8FB3', voice: [0.85, 1.0] },
+  aidan:    { name: 'AIDAN',    color: '#F28C28', voice: [1.15, 1.15] },
+  luke:     { name: 'LUKE',     color: '#8FB38A', voice: [0.9, 0.95] },
+  bub:      { name: 'BUB',      color: '#F5A3C7', voice: [1.35, 1.1] },
+  operator: { name: 'THE OPERATOR', color: '#D9D9D9', voice: [0.95, 0.9] },
+  level3:   { name: 'LEVEL 3',  voice: [0.9, 0.95] },
+  techsupport: { name: 'TECH SUPPORT', voice: [0.75, 1.05] },
+  closer:   { name: 'THE CLOSER', voice: [0.85, 1.2] },
+  regional: { name: 'THE REGIONAL', voice: [0.85, 0.85] },
+  wholesaler: { name: 'WHOLESALER', voice: [0.9, 1.1] },
+  facilitator: { name: 'THE FACILITATOR', voice: [0.95, 1.0] },
+  chef:     { name: 'THE CHEF', voice: [0.8, 0.9] },
+  soldier:  { name: 'SOLDIER',  voice: [1.0, 1.05] },
+  customer: { name: 'CUSTOMER', voice: [1.1, 0.85] },
+  store_manager: { name: 'STORE MANAGER', voice: [0.9, 1.1] },
+  newsreader: { name: 'NEWSREADER', voice: [1.05, 1.0] },
+  radio_dj: { name: 'RADIO DJ', voice: [1.0, 1.3] },
+  man:      { name: 'MAN',      voice: [0.9, 1.1] },
+  landline: { name: 'LANDLINE', voice: [1.0, 1.0] },
+  cook:     { name: 'THE COOK', voice: [0.9, 0.9] },
+  lukes_wife: { name: "LUKE'S WIFE", voice: [1.1, 1.0] },
+  guard:    { name: 'GUARD',    voice: [0.9, 1.0] },
+};
+
+// Colour grades (Engine.setGrade). Values are applied in the grade ShaderPass.
+//   exposure: linear multiplier; sat: saturation (1 = unchanged); contrast (1 = unchanged)
+//   lift/gamma/gain: [r,g,b] ASC-CDL-ish (lift adds, gain multiplies, gamma is power ~1)
+//   vignette 0..1; grain 0..1; fringe (chromatic aberration) 0..1; bloom [strength, radius, threshold]
+//   toneExposure: renderer.toneMappingExposure
+CONTENT.grades = {
+  neutral:        { exposure: 1, sat: 1, contrast: 1, lift: [0, 0, 0], gamma: [1, 1, 1], gain: [1, 1, 1], vignette: 0.3, grain: 0.25, fringe: 0.15, bloom: [0.6, 0.5, 0.85], toneExposure: 1 },
+  launch_night:   { exposure: 1.05, sat: 1.05, contrast: 1.08, lift: [0.01, 0.008, 0.02], gamma: [1, 1, 1.02], gain: [1.06, 0.98, 0.95], vignette: 0.35, grain: 0.2, fringe: 0.15, bloom: [0.8, 0.55, 0.7], toneExposure: 1.1 },
+  launch_home:    { exposure: 1.0, sat: 0.95, contrast: 1.05, lift: [0.01, 0.01, 0.025], gamma: [1, 1, 1.03], gain: [1.04, 0.99, 0.96], vignette: 0.4, grain: 0.22, fringe: 0.12, bloom: [0.7, 0.5, 0.75], toneExposure: 1.05 },
+  launch_fire:    { exposure: 1.05, sat: 1.1, contrast: 1.15, lift: [0.02, 0.008, 0.0], gamma: [0.98, 1, 1.04], gain: [1.12, 0.96, 0.85], vignette: 0.45, grain: 0.3, fringe: 0.25, bloom: [0.9, 0.6, 0.6], toneExposure: 1.05 },
+  launch_bridge:  { exposure: 0.95, sat: 0.8, contrast: 1.12, lift: [0.0, 0.01, 0.02], gamma: [1.02, 1, 0.98], gain: [1.0, 1.0, 1.04], vignette: 0.5, grain: 0.3, fringe: 0.2, bloom: [0.7, 0.6, 0.7], toneExposure: 1.0 },
+  title_dawn:     { exposure: 1.05, sat: 0.9, contrast: 1.05, lift: [0.02, 0.02, 0.03], gamma: [1, 1, 1], gain: [1.08, 1.0, 0.92], vignette: 0.4, grain: 0.25, fringe: 0.1, bloom: [0.7, 0.6, 0.75], toneExposure: 1.0 },
+  qz_green:       { exposure: 0.95, sat: 0.75, contrast: 1.15, lift: [0.0, 0.01, 0.0], gamma: [1.02, 0.98, 1.02], gain: [0.97, 1.02, 0.97], vignette: 0.45, grain: 0.3, fringe: 0.15, bloom: [0.5, 0.5, 0.8], toneExposure: 1.0 },
+  flagship_night: { exposure: 0.9, sat: 0.7, contrast: 1.1, lift: [0.0, 0.01, 0.02], gamma: [1, 1, 1], gain: [0.98, 1.0, 1.05], vignette: 0.55, grain: 0.3, fringe: 0.15, bloom: [0.6, 0.5, 0.75], toneExposure: 1.0 },
+  dawn_gold:      { exposure: 1.05, sat: 1.0, contrast: 1.05, lift: [0.02, 0.015, 0.0], gamma: [1, 1, 1], gain: [1.12, 1.02, 0.88], vignette: 0.35, grain: 0.2, fringe: 0.1, bloom: [0.7, 0.6, 0.75], toneExposure: 1.05 },
+  dry_gold:       { exposure: 1.1, sat: 0.85, contrast: 1.08, lift: [0.03, 0.02, 0.0], gamma: [1, 1, 1], gain: [1.1, 1.02, 0.85], vignette: 0.35, grain: 0.25, fringe: 0.12, bloom: [0.5, 0.5, 0.85], toneExposure: 1.05 },
+  summer_haze:    { exposure: 1.12, sat: 0.8, contrast: 1.0, lift: [0.04, 0.04, 0.03], gamma: [1, 1, 1], gain: [1.05, 1.03, 0.95], vignette: 0.3, grain: 0.22, fringe: 0.12, bloom: [0.6, 0.6, 0.8], toneExposure: 1.08 },
+  office_blue:    { exposure: 0.95, sat: 0.7, contrast: 1.12, lift: [0.0, 0.01, 0.03], gamma: [1, 1, 1], gain: [0.94, 1.0, 1.08], vignette: 0.45, grain: 0.25, fringe: 0.15, bloom: [0.7, 0.5, 0.7], toneExposure: 1.0 },
+  autumn_amber:   { exposure: 1.05, sat: 1.05, contrast: 1.05, lift: [0.02, 0.01, 0.0], gamma: [1, 1, 1], gain: [1.1, 1.0, 0.86], vignette: 0.35, grain: 0.22, fringe: 0.1, bloom: [0.6, 0.55, 0.8], toneExposure: 1.02 },
+  frost_blue:     { exposure: 1.05, sat: 0.7, contrast: 1.05, lift: [0.01, 0.02, 0.04], gamma: [1, 1, 1], gain: [0.95, 1.0, 1.08], vignette: 0.35, grain: 0.22, fringe: 0.1, bloom: [0.6, 0.55, 0.8], toneExposure: 1.05 },
+  snow_steel:     { exposure: 1.05, sat: 0.6, contrast: 1.08, lift: [0.01, 0.02, 0.035], gamma: [1, 1, 1], gain: [0.96, 1.0, 1.06], vignette: 0.4, grain: 0.25, fringe: 0.1, bloom: [0.6, 0.55, 0.8], toneExposure: 1.05 },
+  fire_orange:    { exposure: 1.0, sat: 1.05, contrast: 1.15, lift: [0.02, 0.005, 0.0], gamma: [1, 1, 1], gain: [1.15, 0.95, 0.8], vignette: 0.5, grain: 0.3, fringe: 0.2, bloom: [0.9, 0.6, 0.6], toneExposure: 1.0 },
+  desert_ochre:   { exposure: 1.1, sat: 1.1, contrast: 1.08, lift: [0.02, 0.01, 0.0], gamma: [1, 1, 1], gain: [1.1, 1.0, 0.9], vignette: 0.3, grain: 0.2, fringe: 0.1, bloom: [0.5, 0.5, 0.85], toneExposure: 1.05 },
+  perth_night:    { exposure: 0.95, sat: 0.95, contrast: 1.12, lift: [0.01, 0.005, 0.01], gamma: [1, 1, 1], gain: [1.1, 0.95, 0.9], vignette: 0.5, grain: 0.28, fringe: 0.15, bloom: [0.8, 0.55, 0.7], toneExposure: 1.0 },
+  morning_green:  { exposure: 1.05, sat: 0.85, contrast: 1.02, lift: [0.01, 0.02, 0.01], gamma: [1, 1, 1], gain: [0.98, 1.04, 0.96], vignette: 0.3, grain: 0.2, fringe: 0.1, bloom: [0.6, 0.55, 0.8], toneExposure: 1.05 },
+};
+
+// ===== 100_engine.js =====
+// ============================================================================
+// Engine — renderer, post-processing (bloom, DOF, grade, output, FXAA), environment
+// lighting, colour grades, dynamic resolution. Owned by: core.
+// Engine.camera is the ONLY rendered camera; Director.camUpdate() poses it every frame.
+// ============================================================================
+const Engine = (() => {
+  let renderer, scene, camera, composer, overlay;
+  let renderPass, overlayPass, bloomPass, bokehPass, gradePass, outputPass, fxaaPass;
+  let pmrem, envTex = null;
+  const size = { w: 1, h: 1 };
+  let scale = 1, perfAcc = 0, perfN = 0, perfGood = 0;
+  const focusTmp = new THREE.Vector3();
+
+  const GradeShader = {
+    uniforms: {
+      tDiffuse: { value: null }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) },
+      uExposure: { value: 1 }, uSat: { value: 1 }, uContrast: { value: 1 },
+      uLift: { value: new THREE.Vector3() }, uGamma: { value: new THREE.Vector3(1, 1, 1) }, uGain: { value: new THREE.Vector3(1, 1, 1) },
+      uVignette: { value: 0.3 }, uGrain: { value: 0.2 }, uFringe: { value: 0.1 },
+      uDesat: { value: 0 },      // pause / airplane mode
+      uListen: { value: 0 },     // airplane mode darkening
+      uNightShift: { value: 0 }, // red goggle view
+    },
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+    fragmentShader: `
+      uniform sampler2D tDiffuse; uniform float uTime, uExposure, uSat, uContrast, uVignette, uGrain, uFringe, uDesat, uListen, uNightShift;
+      uniform vec3 uLift, uGamma, uGain; uniform vec2 uRes; varying vec2 vUv;
+      float h12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+      void main(){
+        vec2 d = vUv - 0.5; float r2 = dot(d, d);
+        vec2 off = d * uFringe * 0.012 * (0.3 + r2 * 2.0);
+        vec3 c = vec3(texture2D(tDiffuse, vUv - off).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv + off).b);
+        c *= uExposure;
+        c = 0.18 * pow(max(c, 0.0) / 0.18, vec3(uContrast));
+        c = c * uGain + uLift;
+        c = pow(max(c, 0.0), 1.0 / uGamma);
+        float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        c = mix(vec3(l), c, uSat * (1.0 - uDesat));
+        c *= 1.0 - uListen * 0.45;
+        if (uNightShift > 0.0) { vec3 red = vec3(l * 1.6, l * 0.18, l * 0.12); c = mix(c, red, uNightShift); c *= 1.0 - uNightShift * smoothstep(0.12, 0.4, r2) * 0.8; }
+        float vig = smoothstep(0.75, 0.15, r2 * (1.0 + uVignette));
+        c *= mix(1.0, vig, uVignette);
+        float g = h12(vUv * uRes + fract(uTime * 13.7) * 91.0) - 0.5;
+        c += g * uGrain * 0.06 * (0.25 + sqrt(max(l, 0.0)));
+        gl_FragColor = vec4(max(c, 0.0), 1.0);
+      }`,
+  };
+
+  // Active grade (numbers only) and blend state.
+  const grade = JSON.parse(JSON.stringify(CONTENT.grades.neutral));
+  let gradeFrom = null, gradeTo = null, gradeT = 0, gradeDur = 0;
+
+  const dof = { enabled: false, target: null, focus: 5, aperture: 0.0025, maxblur: 0.008 };
+
+  function init(parent) {
+    renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
+    renderer.setPixelRatio(1);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    parent.appendChild(renderer.domElement);
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+    overlay = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(70, 16 / 9, 0.05, 1200);
+    scene.add(camera);
+    pmrem = new THREE.PMREMGenerator(renderer);
+
+    composer = new EffectComposer(renderer);
+    renderPass = new RenderPass(scene, camera);
+    overlayPass = new RenderPass(overlay, camera); overlayPass.clear = false; overlayPass.clearDepth = true;
+    bloomPass = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.6, 0.5, 0.85);
+    bokehPass = new BokehPass(scene, camera, { focus: 5, aperture: 0.0025, maxblur: 0.008 });
+    bokehPass.enabled = false;
+    gradePass = new ShaderPass(GradeShader);
+    outputPass = new OutputPass();
+    fxaaPass = new ShaderPass(FXAAShader);
+    composer.addPass(renderPass);
+    composer.addPass(overlayPass);
+    composer.addPass(bloomPass);
+    composer.addPass(bokehPass);
+    composer.addPass(gradePass);
+    composer.addPass(outputPass);
+    composer.addPass(fxaaPass);
+    addEventListener('resize', resize);
+    setQuality(SETTINGS.quality);
+    applyGrade();
+  }
+
+  function resize() {
+    size.w = innerWidth; size.h = innerHeight;
+    const q = CONFIG.quality[SETTINGS.quality] || CONFIG.quality.high;
+    const pr = Math.min(devicePixelRatio || 1, q.pixelRatioCap) * scale;
+    renderer.setPixelRatio(pr);
+    renderer.setSize(size.w, size.h, false);
+    composer.setPixelRatio(pr);
+    composer.setSize(size.w, size.h);
+    camera.aspect = size.w / size.h; camera.updateProjectionMatrix();
+    const W = size.w * pr, H = size.h * pr;
+    fxaaPass.material.uniforms.resolution.value.set(1 / W, 1 / H);
+    gradePass.material.uniforms.uRes.value.set(W, H);
+    bloomPass.resolution.set(W / 2, H / 2);
+  }
+
+  function setQuality(name) {
+    const q = CONFIG.quality[name] || CONFIG.quality.high;
+    scale = q.scale;
+    renderer.shadowMap.enabled = q.shadows;
+    fxaaPass.enabled = q.fxaa;
+    Engine.shadowMapSize = q.shadowMap;
+    resize();
+  }
+
+  // Grade: name from CONTENT.grades or a partial params object; blends over dur seconds.
+  function setGrade(g, dur = 0) {
+    const target = Object.assign(JSON.parse(JSON.stringify(CONTENT.grades.neutral)), typeof g === 'string' ? CONTENT.grades[g] : g);
+    if (dur <= 0) { Object.assign(grade, target); gradeTo = null; applyGrade(); return; }
+    gradeFrom = JSON.parse(JSON.stringify(grade)); gradeTo = target; gradeT = 0; gradeDur = dur;
+  }
+  function mixGrade(a, b, t) {
+    for (const k in b) {
+      if (Array.isArray(b[k])) grade[k] = b[k].map((v, i) => U.lerp(a[k][i], v, t));
+      else if (typeof b[k] === 'number') grade[k] = U.lerp(a[k], b[k], t);
+    }
+  }
+  function applyGrade() {
+    const u = gradePass.material.uniforms;
+    u.uExposure.value = grade.exposure; u.uSat.value = grade.sat; u.uContrast.value = grade.contrast;
+    u.uLift.value.fromArray(grade.lift); u.uGamma.value.fromArray(grade.gamma); u.uGain.value.fromArray(grade.gain);
+    u.uVignette.value = grade.vignette;
+    u.uGrain.value = SETTINGS.grain ? grade.grain : 0;
+    u.uFringe.value = SETTINGS.motion ? grade.fringe : grade.fringe * 0.3;
+    bloomPass.strength = grade.bloom[0]; bloomPass.radius = grade.bloom[1]; bloomPass.threshold = grade.bloom[2];
+    renderer.toneMappingExposure = grade.toneExposure;
+  }
+
+  // Environment lighting for PBR materials, from a simple gradient dome (+ optional bright patches).
+  // opts: { top, horizon, bottom, intensity, spots:[{dir:[x,y,z], color, size}] } or 'room'
+  function setEnv(opts) {
+    if (envTex) { envTex.dispose(); envTex = null; }
+    if (!opts) { scene.environment = null; return; }
+    let rt;
+    if (opts === 'room') rt = pmrem.fromScene(new RoomEnvironment(renderer), 0.04);
+    else {
+      const s = new THREE.Scene();
+      const geo = new THREE.SphereGeometry(50, 32, 16);
+      const top = new THREE.Color(opts.top ?? 0x445566), hor = new THREE.Color(opts.horizon ?? 0x887766), bot = new THREE.Color(opts.bottom ?? 0x222018);
+      const k = opts.intensity ?? 1, cols = [], p = geo.attributes.position;
+      for (let i = 0; i < p.count; i++) {
+        const y = p.getY(i) / 50, c = y > 0 ? hor.clone().lerp(top, Math.pow(y, 0.6)) : hor.clone().lerp(bot, Math.pow(-y, 0.4));
+        cols.push(c.r * k, c.g * k, c.b * k);
+      }
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+      s.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+      for (const sp of opts.spots || []) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(sp.size ?? 6, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(sp.color ?? 0xffffff).multiplyScalar(sp.power ?? 4) }));
+        m.position.fromArray(sp.dir).normalize().multiplyScalar(40); s.add(m);
+      }
+      rt = pmrem.fromScene(s, 0.02);
+      geo.dispose();
+    }
+    envTex = rt.texture; scene.environment = envTex;
+  }
+
+  // DOF: Director sets Engine.dof.enabled / target (Vector3 or () => Vector3) / aperture.
+  function updateDof() {
+    const on = dof.enabled && SETTINGS.quality !== 'low';
+    bokehPass.enabled = on;
+    if (!on) return;
+    const t = typeof dof.target === 'function' ? dof.target() : dof.target;
+    if (t) { focusTmp.copy(t); dof.focus = U.lerp(dof.focus, camera.position.distanceTo(focusTmp), 0.25); }
+    const u = bokehPass.uniforms;
+    u.focus.value = dof.focus; u.aperture.value = dof.aperture; u.maxblur.value = dof.maxblur;
+  }
+
+  function dynRes(dt) {
+    const q = CONFIG.quality[SETTINGS.quality] || CONFIG.quality.high;
+    perfAcc += dt; perfN++;
+    if (perfAcc < 1) return;
+    const avg = perfAcc / perfN; perfAcc = 0; perfN = 0;
+    if (avg > 0.02 && scale > 0.6) { scale = Math.max(0.6, +(scale - 0.1).toFixed(2)); perfGood = 0; resize(); }
+    else if (avg < 0.014 && scale < q.maxScale) { if (++perfGood >= 3) { scale = Math.min(q.maxScale, +(scale + 0.1).toFixed(2)); perfGood = 0; resize(); } }
+    else perfGood = 0;
+  }
+
+  let time = 0;
+  function render(dt, measure = true) {
+    time += dt;
+    if (gradeTo) { gradeT += dt; const t = U.clamp(gradeT / gradeDur); mixGrade(gradeFrom, gradeTo, U.ease.inOut(t)); if (t >= 1) gradeTo = null; applyGrade(); }
+    gradePass.material.uniforms.uTime.value = time;
+    updateDof();
+    composer.render(dt);
+    if (measure && !CONFIG.dev) dynRes(dt);
+  }
+
+  return {
+    init, render, resize, setQuality, setGrade, setEnv, grade, dof, applyGrade,
+    get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; },
+    get overlay() { return overlay; }, get composer() { return composer; }, get size() { return size; },
+    get uniforms() { return gradePass.material.uniforms; }, get time() { return time; },
+    shadowMapSize: 2048,
+  };
+})();
+
+// ===== 110_input.js =====
+// ============================================================================
+// Input — keyboard, mouse (pointer lock), gamepad (standard mapping); named actions.
+// Owned by: core.
+//   Input.down(a) held now · Input.pressed(a) went down this frame · Input.released(a)
+//   Input.heldTime(a) seconds held · Input.move {x,y} (y = forward) · Input.look {x,y} (per-frame delta, radians-ish)
+//   Input.typed: array of printable keys pressed this frame (for typing beats) · Input.anyPressed
+//   Input.device 'kbm' | 'pad'
+// ============================================================================
+const Input = (() => {
+  const KEYS = {
+    up: ['KeyW', 'ArrowUp'], down: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'],
+    sprint: ['ShiftLeft', 'ShiftRight'], crouch: ['KeyC'], jump: ['Space'], interact: ['KeyE'], listen: ['KeyQ'],
+    reload: ['KeyR'], melee: ['KeyF'], throw: ['KeyG'], backpack: ['Tab'], hint: ['KeyT'], skip: ['Space'],
+    pause: ['Escape', 'KeyP'], confirm: ['Enter', 'Space'], back: ['Escape', 'Backspace'],
+    slot1: ['Digit1'], slot2: ['Digit2'], slot3: ['Digit3'], slot4: ['Digit4'],
+    menuUp: ['ArrowUp', 'KeyW'], menuDown: ['ArrowDown', 'KeyS'], menuLeft: ['ArrowLeft', 'KeyA'], menuRight: ['ArrowRight', 'KeyD'],
+  };
+  // gamepad standard mapping button indices
+  const PAD = {
+    jump: [0], confirm: [0], skip: [0], crouch: [1], back: [1], interact: [2], reload: [2], melee: [3],
+    listen: [5], throw: [5], aim: [6], fire: [7], backpack: [8], pause: [9], sprint: [10], shoulder: [11],
+    menuUp: [12], menuDown: [13], menuLeft: [14], menuRight: [15], slot1: [12], slot2: [15], slot3: [13], slot4: [14],
+  };
+  const keys = new Set(), mouse = new Set(), hit = new Set(), mhit = new Set(); // hit*: went down since last update (catches taps shorter than a frame)
+  const state = {}, prev = {}, held = {};
+  const move = { x: 0, y: 0 }, look = { x: 0, y: 0 };
+  let mdx = 0, mdy = 0, wheel = 0, typed = [], anyPressed = false, anyKey = false;
+  let device = 'kbm', locked = false;
+  const actions = new Set([...Object.keys(KEYS), ...Object.keys(PAD), 'aim', 'fire', 'shoulder', 'next', 'prev']);
+
+  function init() {
+    addEventListener('keydown', e => {
+      if (e.code === 'Tab' || e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+      if (!e.repeat) { keys.add(e.code); hit.add(e.code); anyKey = true; if (e.key.length === 1) typed.push(e.key); }
+      device = 'kbm';
+    });
+    addEventListener('keyup', e => keys.delete(e.code));
+    addEventListener('blur', () => { keys.clear(); mouse.clear(); });
+    addEventListener('mousedown', e => { mouse.add(e.button); mhit.add(e.button); anyKey = true; device = 'kbm'; });
+    addEventListener('mouseup', e => mouse.delete(e.button));
+    addEventListener('contextmenu', e => e.preventDefault());
+    addEventListener('mousemove', e => { if (locked) { mdx += e.movementX; mdy += e.movementY; } });
+    addEventListener('wheel', e => { wheel += Math.sign(e.deltaY); }, { passive: true });
+    document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement != null; });
+  }
+
+  function lock() { if (!locked && !CONFIG.dev) Engine.renderer.domElement.requestPointerLock?.()?.catch?.(() => {}); }
+  function unlock() { if (locked) document.exitPointerLock?.(); }
+
+  function update(dt) {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const gp = [...pads].find(p => p && p.mapping === 'standard') || null;
+    const pb = i => gp && gp.buttons[i] && gp.buttons[i].pressed;
+    if (gp && gp.buttons.some(b => b.pressed)) device = 'pad';
+    for (const a of actions) {
+      prev[a] = state[a] || false;
+      let d = (KEYS[a] || []).some(k => keys.has(k) || hit.has(k)) || (PAD[a] || []).some(pb);
+      if (a === 'aim') d = d || mouse.has(2) || mhit.has(2);
+      if (a === 'fire') d = d || mouse.has(0) || mhit.has(0);
+      if (a === 'shoulder') d = d || mouse.has(1) || mhit.has(1);
+      state[a] = d;
+      held[a] = d ? (held[a] || 0) + dt : 0;
+    }
+    state.next = wheel > 0; state.prev = wheel < 0; wheel = 0;
+    // movement
+    let mx = (state.right ? 1 : 0) - (state.left ? 1 : 0), my = (state.up ? 1 : 0) - (state.down ? 1 : 0);
+    const dz = v => Math.abs(v) < 0.18 ? 0 : (v - Math.sign(v) * 0.18) / 0.82;
+    if (gp) { const ax = dz(gp.axes[0] || 0), ay = dz(gp.axes[1] || 0); if (ax || ay) { mx = ax; my = -ay; device = 'pad'; } }
+    const len = Math.hypot(mx, my); if (len > 1) { mx /= len; my /= len; }
+    move.x = mx; move.y = my;
+    // look
+    const s = SETTINGS.sens, inv = SETTINGS.invertY ? -1 : 1;
+    look.x = mdx * 0.0022 * s; look.y = mdy * 0.0022 * s * inv; mdx = mdy = 0;
+    if (gp) { const rx = dz(gp.axes[2] || 0), ry = dz(gp.axes[3] || 0); look.x += rx * 2.6 * s * dt; look.y += ry * 1.8 * s * dt * inv; }
+    anyPressed = anyKey; anyKey = false; hit.clear(); mhit.clear();
+    Input.typed = typed; typed = [];
+    Input.anyPressed = anyPressed;
+  }
+
+  return {
+    init, update, lock, unlock, move, look, typed: [], anyPressed: false,
+    down: a => !!state[a], pressed: a => !!state[a] && !prev[a], released: a => !state[a] && !!prev[a], heldTime: a => held[a] || 0,
+    get device() { return device; }, get locked() { return locked; },
+  };
+})();
+
+// ===== 120_audio.js =====
+// ============================================================================
+// Audio — Web Audio score (Karplus–Strong guitar, drones, piano, phone tones), sfx, ambience,
+// voice (speechSynthesis, optional), mixer buses with ducking, positional sound.
+// Owned by: audio agent. THIS IS A STUB: keep every API below, replace the implementation.
+//
+// CONTRACT (every call must be safe before init() and when the AudioContext is unavailable)
+//   Audio.init()                      create context on user gesture (idempotent)
+//   Audio.update(dt)                  listener follows Engine.camera; ducking; loops
+//   Audio.music(cueId, {fade})        cue ids: 'title' (full theme once then silence), 'theme_a', 'theme_b', 'theme' (full),
+//                                     'chloe_motif', 'bub_motif', 'wai' (low drone then phrase A), 'film_night',
+//                                     'whales', 'choice_drone', 'piano_theme', 'tension' (loop; use Audio.tension(level))
+//   Audio.stopMusic(fadeSec=2)
+//   Audio.tension(level 0..1)         stealth/combat drone intensity (0 = off)
+//   Audio.sfx(name, {pos: Vector3, vol, rate}) -> {stop()}   one-shots. Names (at least):
+//      click (clicker), click_counter (security guard counter), notif_chime, phone_ring, phone_buzz, phone_boot (Bub's motif),
+//      glass_break, door_knock, door_open, door_slam, wood_crash (table), punch, body_fall, tackle, gunshot, gunshot_far,
+//      rifle_shot, revolver_shot, shotgun, reload, dry_fire, car_crash, tyre_screech, horn, truck_horn, siren, scanner_beep,
+//      scanner_shriek, swipe, whisper (scroller mutter), scroller_scream, heartbeat, typing_tap, send_whoosh,
+//      tv_on, tv_off, radio_static, radio_click, fire_whoosh, explosion, bottle_break, brick_hit, pluck (UI hover), ui_select,
+//      page_turn, breath_in, gasp, chirp (digital pet), tape_click, tape_hiss, shovel, bell, water_splash
+//   Audio.loop(name, {pos, vol}) -> {stop(fade), setVol(v), setPos(v3)}   continuous sources:
+//      fire, engine_idle, engine_drive, rain, wind, tv_murmur, radio_dj, crowd_murmur, fluorescent_hum, water_lap, siren_far,
+//      clicks_far (thousands of distant clicks), cicadas, turbine_hum, phone_feed (scrolling murmur)
+//   Audio.amb(name|null, fade)        area ambience bed (crossfades). Names: store_night, suburb_night, house_night, car_interior,
+//      fire_street, bridge_night, title_dawn, qz_rain, warehouse, tunnel, tower, mall_dawn, outback_day, … (unknown names = silence)
+//   Audio.footstep(surface, pos, intensity)   surfaces: concrete gravel grass wood water snow metal tile carpet
+//   Audio.voice(who, text, {pitch, rate}) -> Promise   speechSynthesis when SETTINGS.voice; resolves immediately otherwise
+//   Audio.duck(on)                    duck music+amb under dialogue
+//   Audio.muffle(t 0..1)              low-pass everything (Airplane Mode, underwater)
+//   Audio.setVolumes()                re-read SETTINGS.vol
+//   Audio.pause(bool)                 pause menu: suspend sfx/amb, keep UI sounds
+//   Audio.silence(on, fade)           drop all music and most ambience (heaviest scenes)
+// ============================================================================
+const Audio = (() => {
+  const h = { stop() {}, setVol() {}, setPos() {} };
+  return {
+    init() {}, update() {}, music() {}, stopMusic() {}, tension() {}, sfx: () => h, loop: () => h, amb() {}, footstep() {},
+    voice: () => Promise.resolve(), duck() {}, muffle() {}, setVolumes() {}, pause() {}, silence() {},
+  };
+})();
+
+// ===== 130_tex.js =====
+// ============================================================================
+// Tex — procedural canvas textures and cached PBR materials. Every texture/material is
+// generated once and cached; cached objects carry userData.shared = true so area unloads
+// never dispose them. Owned by: world agent. THIS IS A STUB: keep the API, replace the implementation.
+//
+// CONTRACT
+//   Tex.get(name, opts) -> THREE.Texture  (colour map, sRGB, RepeatWrapping). Names (at least):
+//      concrete, concrete_wet, brick, brick_painted, asphalt, asphalt_lines, rust, metal, metal_painted, wood, planks,
+//      floorboards, plywood, moss, grass, dirt, gravel, sand, snow, leaves, bark, fabric, carpet, tiles, tiles_mall,
+//      plaster, wallpaper, render (painted wall), roof_tiles, corrugated, glass_dirty, paper, water, noise, screenrot,
+//      screen_feed (animated-looking scroll feed; call Tex.animate(dt) each frame to scroll), skin, denim, knit
+//   Tex.normal(name) -> normal map texture derived from the same pattern (for PBR relief)
+//   Tex.mat(name, opts) -> cached MeshStandardMaterial using Tex.get(name) (+ normal/roughness)
+//      opts: { color (tint), repeat:[u,v], rough, metal, emissive, emissiveIntensity, transparent, opacity, side, key }
+//      same name+opts returns the same material instance
+//   Tex.color(hex, opts) -> cached plain MeshStandardMaterial (rough/metal/emissive opts)
+//   Tex.text(text, {w, h, font, size, color, bg, align, pad, weight, italic, glow}) -> Texture   (signs, labels)
+//   Tex.sign(kind, text) -> Texture   kinds: shopfront (Optus-style yellow YES), banner (promo banner), street, road_sign,
+//      stencil (military), neon, whiteboard (handwriting), plaque, price_tag, ration, lanyard_card
+//   Tex.poster(kind) -> Texture       kinds: comms_look_up, comms_report, comms_execution, band, promo_launch, promo_upgrade,
+//      say_yes (YES crossed out), missing_person, landlines_dialtone, school_notice, fitness, party_toga, values_teamwork
+//   Tex.graffiti(text, {color, style:'spray'|'drip'|'stencil'|'tally'|'cord'}) -> Texture (transparent)
+//   Tex.decal(kind) -> Texture (transparent): blood, stain, crack, water_stain, soot, moss_patch, coffee_ring, footprints
+//   Tex.photo(kind) -> Texture        framed family photos (painted, faceless-ish): baby_in_polo, fridge_faces, store_team, launch_night
+//   Tex.preload() -> [jobs]           optional list of () => void to warm the cache during the loading screen
+//   Tex.animate(dt)                   advance animated textures (screen feeds, screen-rot flicker)
+// ============================================================================
+const Tex = (() => {
+  const mats = new Map(), texs = new Map();
+  const shared = x => (x.userData.shared = true, x);
+  function get(name) {
+    if (texs.has(name)) return texs.get(name);
+    const c = document.createElement('canvas'); c.width = c.height = 4;
+    const g = c.getContext('2d'); g.fillStyle = '#888'; g.fillRect(0, 0, 4, 4);
+    const t = shared(new THREE.CanvasTexture(c)); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; texs.set(name, t); return t;
+  }
+  function color(hex, o = {}) {
+    const k = 'c' + hex + JSON.stringify(o);
+    if (!mats.has(k)) mats.set(k, shared(new THREE.MeshStandardMaterial({ color: hex, roughness: o.rough ?? 0.8, metalness: o.metal ?? 0, emissive: o.emissive ?? 0, emissiveIntensity: o.emissiveIntensity ?? 1 })));
+    return mats.get(k);
+  }
+  const mat = (name, o = {}) => color(o.color ?? 0x999999, o);
+  const text = () => get('text'), sign = () => get('sign'), poster = () => get('poster'), graffiti = () => get('graffiti'), decal = () => get('decal'), photo = () => get('photo');
+  return { get, normal: get, mat, color, text, sign, poster, graffiti, decal, photo, preload: () => [], animate() {} };
+})();
+
+// ===== 140_build.js =====
+// ============================================================================
+// Build — level-builder kit: primitives with colliders, rooms, streets, stores, houses,
+// vegetation, water, terrain, lights, FX (fire, god rays, dust, rain), a prop library, and
+// instancing helpers. Everything built lands in the current area (Game sets Build.begin(A)).
+// Owned by: world agent. THIS IS A STUB: keep the API, replace/extend the implementation.
+//
+// CONTRACT (all positions are [x,y,z] arrays or Vector3; yaw in radians; objects are added to
+// the current area group and returned)
+//   Build.begin(A) / Build.end(A)          called by Game around def.build(A)
+//   Build.A                                current area context
+//   Build.mesh(geo, mat, {pos, yaw, rot:[x,y,z], scale, solid, walk, surface, shadow, receive, parent}) -> Mesh
+//   Build.box(w, h, d, mat, {pos (= centre of the BOTTOM face), yaw, solid=true, …}) -> Mesh
+//   Build.plane(w, d, mat, {pos, yaw, rot, …}) -> Mesh (horizontal by default)
+//   Build.group({pos, yaw, parent}) -> Group
+//   Build.floor(x1, z1, x2, z2, mat, {y, surface}) ; Build.wall(x1, z1, x2, z2, h, mat, {y, thick, doors:[{at, w, h}], windows:[{at, w, h, sill}]})
+//   Build.room({x, z, w, d, h, yaw, wall, floor, ceil, doors, windows, surface}) -> Group  (walls with openings, floor, ceiling, colliders)
+//   Build.stairs({from, to, width}) ; Build.ramp(...)
+//   Build.prop(name, {pos, yaw, scale, variant, text, color, solid, seed}) -> Group   — see Build.propNames for the library.
+//   Build.sun({dir, color, intensity, area:[size], target}) -> DirectionalLight (the ONE shadow caster per area)
+//   Build.light(type 'point'|'spot', {pos, color, intensity, distance, decay, angle, penumbra, target, flicker}) -> Light (no shadows)
+//   Build.hemi({sky, ground, intensity})
+//   Build.fire({pos, size, light}) ; Build.smoke({pos, size}) ; Build.godray({pos, dir, w, h, color, opacity})
+//   Build.dust({box:[x1,y1,z1,x2,y2,z2], count}) ; Build.rain({area}) ; Build.fairyLights({points, color})
+//   Build.water({x1, z1, x2, z2, y, color, dark}) ; Build.terrain({size, height:(x,z)=>y, mat}) (also sets World.terrain)
+//   Build.tree(kind, {pos, scale, seed}) kinds: gum, fig, palm, poplar, willow, pine, snow_gum, dead
+//   Build.grass({box, count, color}) ; Build.vines({box|mesh, density}) ; Build.scatter(kind, {box, count, seed})  (debris, leaves, bottles, phones, rubble, paper)
+//   Build.car(kind, {pos, yaw, color, wrecked, lights}) kinds: hatch, sedan, ute, van, truck, comms_van, camper, police
+//   Build.streetlight({pos, yaw, on, color}) ; Build.sign({pos, yaw, tex, w, h, post, lit})
+//   Build.instanced(geo, mat, matrices[]) -> InstancedMesh
+//   Build.text3d? no — use Tex.text on planes.
+// ============================================================================
+const Build = (() => {
+  let A = null;
+  const tmpE = new THREE.Euler();
+  function mesh(geo, mat, o = {}) {
+    const m = new THREE.Mesh(geo, mat);
+    if (o.pos) U.v3(o.pos, m.position);
+    if (o.rot) m.rotation.set(...o.rot); else if (o.yaw) m.rotation.y = o.yaw;
+    if (o.scale) typeof o.scale === 'number' ? m.scale.setScalar(o.scale) : m.scale.set(...o.scale);
+    m.castShadow = o.shadow ?? true; m.receiveShadow = o.receive ?? true;
+    (o.parent || A.group).add(m);
+    if (o.solid) World.addObject(m, { surface: o.surface, walk: o.walk });
+    return m;
+  }
+  function box(w, h, d, mat, o = {}) {
+    const g = new THREE.BoxGeometry(w, h, d); g.translate(0, h / 2, 0);
+    return mesh(g, mat, Object.assign({ solid: true }, o));
+  }
+  function plane(w, d, mat, o = {}) { const g = new THREE.PlaneGeometry(w, d); g.rotateX(-Math.PI / 2); return mesh(g, mat, Object.assign({ shadow: false }, o)); }
+  function group(o = {}) { const g = new THREE.Group(); if (o.pos) U.v3(o.pos, g.position); if (o.yaw) g.rotation.y = o.yaw; (o.parent || A.group).add(g); return g; }
+  function sun(o = {}) {
+    const l = new THREE.DirectionalLight(o.color ?? 0xffffff, o.intensity ?? 2);
+    const d = U.v3(o.dir || [-0.5, -1, -0.3]).normalize();
+    const t = U.v3(o.target || [0, 0, 0]);
+    l.position.copy(t).addScaledVector(d, -40); l.target.position.copy(t);
+    l.castShadow = true; const s = o.area ?? 30;
+    Object.assign(l.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 1, far: 120 });
+    l.shadow.mapSize.set(Engine.shadowMapSize, Engine.shadowMapSize); l.shadow.bias = -0.0004; l.shadow.normalBias = 0.03;
+    A.group.add(l, l.target); return l;
+  }
+  function light(type, o = {}) {
+    const l = type === 'spot' ? new THREE.SpotLight(o.color ?? 0xffffff, o.intensity ?? 10, o.distance ?? 20, o.angle ?? 0.6, o.penumbra ?? 0.5, o.decay ?? 2)
+      : new THREE.PointLight(o.color ?? 0xffffff, o.intensity ?? 5, o.distance ?? 12, o.decay ?? 2);
+    if (o.pos) U.v3(o.pos, l.position);
+    if (type === 'spot') { U.v3(o.target || [0, 0, 0], l.target.position); A.group.add(l.target); }
+    A.group.add(l); return l;
+  }
+  function hemi(o = {}) { const l = new THREE.HemisphereLight(o.sky ?? 0x8899aa, o.ground ?? 0x332211, o.intensity ?? 0.6); A.group.add(l); return l; }
+  function prop(name, o = {}) { const g = group(o); box(0.5, 0.5, 0.5, Tex.color(0xaa33aa), { parent: g, solid: false }); return g; }
+  return {
+    begin(a) { A = a; }, end() { }, get A() { return A; },
+    mesh, box, plane, group, sun, light, hemi, prop, propNames: [],
+  };
+})();
+
+// ===== 150_chars.js =====
+// ============================================================================
+// Chars — character factory, skeleton, face rig, clothing, hair, props, cast definitions,
+// and procedural animation (locomotion, poses, gestures, paired anims).
+// Owned by: chars agent. THIS IS A STUB: keep every API below, replace the implementation.
+//
+// CONTRACT
+//   Chars.defs[defId]           cast definitions (see ARCHITECTURE.md for the required list)
+//   Chars.create(defId, {name, seed, variant}) -> Character      (added to Engine.scene)
+//   Chars.update(dt)            advance all live characters (called by Game.tick)
+//   Chars.all                   array of live characters
+//   Chars.preload()             optional: array of () => void jobs run under the loading screen
+//
+// Character c:
+//   c.name, c.def (with c.def.id), c.root (Group; feet at root.position; facing +Z; yaw = root.rotation.y)
+//   c.yaw (get/set), c.bones {hips, spine, chest, neck, head, jaw, clavL/R, upperArmL/R, foreArmL/R, handL/R, thighL/R, shinL/R, footL/R}
+//   c.point(name, out?) -> world Vector3. names: head, eyes, chest, hips, feet, hand_l, hand_r, shoulder_r, shoulder_l, badge
+//   c.height (m)
+//   Locomotion (used by Play/AI every frame):
+//     c.setMove(speed m/s, {crouch, carry, limp, strafe:[x,z] local dir}) — gait from speed: <0.1 idle, walk ~1.4, jog ~3, sprint ~5.5
+//   Scripted movement (Director/AI; ignores collisions; drives setMove itself):
+//     c.walkTo(target, {speed=1.4 | 'walk'|'jog'|'run', path:[...points], stopDist=0.1, face}) -> Promise
+//        target/path points: Vector3 | [x,y,z] | marker name (resolved via Game.G.marker)
+//     c.turnTo(yaw | Vector3 | Character, dur=0.5) -> Promise
+//     c.stop()  cancel walkTo/turnTo (resolves their promises)
+//   Face & head:
+//     c.lookAt(Vector3 | Character | () => Vector3 | null)  head/neck/eyes track target (null = forward)
+//     c.emote(name, dur?)  neutral smirk smile laugh sad crying angry afraid shocked tender tense ashamed exhausted lying (blend 0.25 s)
+//     c.speak(text, dur)   visemes from text syllables for dur seconds;  c.speaking (bool)
+//     c.blink()            force a blink
+//   Body:
+//     c.pose(name, opts) -> Promise   held base pose: stand sit kneel lie crouch carry(=carrying someone) carried dead hands_up
+//                                      phone(=infected/crowd: phone held to face, thumb swiping) phone_ear aim sit_car drive
+//     c.gesture(name, opts) -> Promise one-shot upper-body overlay: point shrug wave_off hand_on_shoulder fold_arms rub_face
+//                                      hands_on_hips push_glasses pull_collar rub_palm click_cutter wipe_tears cover_mouth
+//                                      hand_over hold_hands lean_railing head_on_shoulder cpr punch tackle swing fire recoil
+//                                      struggle type_phone slam_phone wave knock grab
+//     c.anim(name, opts) -> Promise   alias: routes to pose() or gesture()
+//     c.hold(prop, hand='r')  prop: name from Chars.props ('phone','torch','tyre_iron','revolver','shotgun','rifle','bat','box_cutter','manual','bow','pistol','clipboard','megaphone','axe','scanner','radio','mug','ration_bar','flowers','digital_pet','cassette','letter') or Object3D;  c.drop(hand)
+//     c.attach(other, mode) / c.detach()   paired anims: 'carry' (other in c's arms), 'hug', 'face_hold' (c holds other's face), 'pin' (c on top of other)
+//     c.setVisible(bool)
+//     c.decal(kind, on=true)   'blood_knuckles' 'grime' 'tears' 'wet' 'blood_face' 'sweat' 'fever'
+//     c.badge(value | null, where)  red infection dot with white number on skin; where: 'forearm_l' 'wrist_r' 'neck' 'calf_r'
+//     c.phoneGlow(on)          screen glow on the held phone (blue emissive + face light)
+//     c.dispose()
+// ============================================================================
+const Chars = (() => {
+  const all = [];
+  const defs = {};
+  const tmp = new THREE.Vector3();
+  function create(defId, o = {}) {
+    const def = defs[defId] || { id: defId, height: 1.75, color: 0x888888 };
+    const root = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, def.height - 0.44, 4, 8), new THREE.MeshStandardMaterial({ color: def.color ?? 0x888888 }));
+    body.position.y = def.height / 2; body.castShadow = true; root.add(body);
+    Engine.scene.add(root);
+    const c = {
+      name: o.name || defId, def, root, height: def.height, bones: {}, speaking: false,
+      get yaw() { return root.rotation.y; }, set yaw(v) { root.rotation.y = v; },
+      point(n, out = new THREE.Vector3()) { const y = { head: def.height - 0.12, eyes: def.height - 0.1, chest: def.height * 0.72, hips: def.height * 0.52, feet: 0 }[n] ?? def.height * 0.6; return out.set(0, y, 0).applyMatrix4(root.matrixWorld); },
+      setMove() {}, walkTo(t) { const p = Game.G.marker(t); if (p) root.position.copy(p.pos); return Promise.resolve(); },
+      turnTo() { return Promise.resolve(); }, stop() {}, lookAt() {}, emote() {}, speak() {}, blink() {},
+      pose() { return Promise.resolve(); }, gesture() { return Promise.resolve(); }, anim() { return Promise.resolve(); },
+      hold() {}, drop() {}, attach() {}, detach() {}, setVisible(v) { root.visible = v; }, decal() {}, badge() {}, phoneGlow() {},
+      update() {}, dispose() { Engine.scene.remove(root); body.geometry.dispose(); body.material.dispose(); all.splice(all.indexOf(c), 1); },
+    };
+    all.push(c);
+    return c;
+  }
+  return { defs, create, all, update(dt) { for (const c of all) c.update(dt); }, props: {} };
+})();
+
+// ===== 170_ai.js =====
+// ============================================================================
+// AI — infected (Scroller, Lurker, Clicker, Bloatware), humans (factions), companions,
+// crowds, perception (sight cones, noise), navigation. Owned by: systems agent.
+// THIS IS A STUB: keep every API below, replace the implementation.
+//
+// CONTRACT
+//   AI.spawn(type, at {pos, yaw}, opts) -> agent   types: scroller lurker clicker bloatware human crowd
+//        opts: { name, char (existing Character to drive), behaviour: 'idle'|'wander'|'patrol'|'hunt'|'ambush'|'scripted'|'phone_idle'|'queue',
+//                route:[points], faction (comms smuggler doorknocker retreat bandit landline), weapon, aware, hp, target }
+//        agent: { char, type, state, hp, alive, kill(), alert(pos), setBehaviour(b, opts) }
+//   AI.companion(char, {role, follow=true}) -> agent   companion brain (follow, stealth crouch, callouts, rescues)
+//   AI.noise(pos, radius, source)     emit noise (footsteps, gunshots, thrown objects)
+//   AI.update(dt) · AI.clear() · AI.list · AI.byName(name) · AI.alertLevel (0..1)
+// ============================================================================
+const AI = (() => {
+  const list = [];
+  return {
+    list, spawn(type, at, o = {}) { const c = o.char || Chars.create(type, { name: o.name }); if (at) Game.place(c, at); const a = { char: c, type, state: 'idle', hp: 1, alive: true, kill() { a.alive = false; }, alert() {}, setBehaviour() {} }; list.push(a); return a; },
+    companion(char) { return { char }; }, noise() {}, update() {}, clear() { for (const a of list) if (!a.char.persistent) a.char.dispose(); list.length = 0; },
+    byName: n => list.find(a => a.char.name === n)?.char || null, alertLevel: 0,
+  };
+})();
+
+// ===== 175_world.js =====
+// ============================================================================
+// World — collision, ground height, line-of-sight raycasts against the current area's
+// axis-aligned boxes. Owned by: core. Colliders are registered by Build/levels via
+// World.addBox and cleared by Game when an area unloads.
+// ============================================================================
+const World = (() => {
+  const boxes = [];            // { min: Vector3, max: Vector3, surface, walk (top is walkable), block (blocks movement), sight (blocks LOS) }
+  const surfaces = [];         // { x1, z1, x2, z2, name } footstep surface zones (last added wins)
+  let terrain = null;          // optional (x, z) => ground height
+  let baseSurface = 'concrete';
+  let owner = null;            // area id that new boxes/surfaces belong to (set by Game while building)
+  const STEP = 0.45;
+
+  function addBox(min, max, o = {}) {
+    const b = { area: owner, min: U.v3(min).clone(), max: U.v3(max).clone(), surface: o.surface || null, walk: o.walk !== false, block: o.block !== false, sight: o.sight !== false, cam: o.cam !== false, tag: o.tag || null };
+    boxes.push(b); return b;
+  }
+  // From a mesh/group's world bounding box.
+  function addObject(obj, o = {}) { obj.updateWorldMatrix(true, true); const bb = new THREE.Box3().setFromObject(obj); return addBox(bb.min, bb.max, o); }
+  function removeBox(b) { const i = boxes.indexOf(b); if (i >= 0) boxes.splice(i, 1); }
+  // clear(areaId) removes that area's boxes/surfaces; clear() removes everything
+  function clear(areaId) {
+    if (areaId == null) { boxes.length = 0; surfaces.length = 0; terrain = null; baseSurface = 'concrete'; return; }
+    for (const l of [boxes, surfaces]) for (let i = l.length - 1; i >= 0; i--) if (l[i].area === areaId) l.splice(i, 1);
+  }
+
+  function groundAt(x, z, y = 1e4, r = 0) {
+    let g = terrain ? terrain(x, z) : 0;
+    for (const b of boxes) {
+      if (!b.walk || b.max.y > y + STEP) continue;
+      if (x + r < b.min.x || x - r > b.max.x || z + r < b.min.z || z - r > b.max.z) continue;
+      if (b.max.y > g) g = b.max.y;
+    }
+    return g;
+  }
+
+  // Slide a circle (radius r) at feet height y by (dx, dz). Returns {x, z, hit}.
+  const res = { x: 0, z: 0, hit: false };
+  function move(x, y, z, dx, dz, r = 0.35, h = 1.7) {
+    res.hit = false;
+    let nx = x + dx, nz = z + dz;
+    for (let iter = 0; iter < 3; iter++) {
+      let any = false;
+      for (const b of boxes) {
+        if (!b.block || b.max.y <= y + STEP || b.min.y >= y + h) continue;
+        // closest point on box (XZ) to circle centre
+        const cx = U.clamp(nx, b.min.x, b.max.x), cz = U.clamp(nz, b.min.z, b.max.z);
+        let ox = nx - cx, oz = nz - cz; const d2 = ox * ox + oz * oz;
+        if (d2 >= r * r) continue;
+        any = true; res.hit = true;
+        if (d2 > 1e-8) { const d = Math.sqrt(d2), push = r - d; nx += ox / d * push; nz += oz / d * push; }
+        else { // centre inside box: push out along the shallowest axis
+          const px1 = nx - b.min.x, px2 = b.max.x - nx, pz1 = nz - b.min.z, pz2 = b.max.z - nz, m = Math.min(px1, px2, pz1, pz2);
+          if (m === px1) nx = b.min.x - r; else if (m === px2) nx = b.max.x + r; else if (m === pz1) nz = b.min.z - r; else nz = b.max.z + r;
+        }
+      }
+      if (!any) break;
+    }
+    res.x = nx; res.z = nz; return res;
+  }
+
+  // Segment vs boxes (slab test). Returns t in [0,1] of the first hit, 1 if clear.
+  // filter: 'sight' (LOS) or 'cam' (camera collision) or null (any blocking box)
+  function raycast(from, to, filter = 'sight') {
+    const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
+    let best = 1;
+    for (const b of boxes) {
+      if (filter && !b[filter]) continue;
+      let t0 = 0, t1 = best, ok = true;
+      for (const [o, d, mn, mx] of [[from.x, dx, b.min.x, b.max.x], [from.y, dy, b.min.y, b.max.y], [from.z, dz, b.min.z, b.max.z]]) {
+        if (Math.abs(d) < 1e-9) { if (o < mn || o > mx) { ok = false; break; } continue; }
+        let a = (mn - o) / d, c = (mx - o) / d; if (a > c) [a, c] = [c, a];
+        if (a > t0) t0 = a; if (c < t1) t1 = c; if (t0 > t1) { ok = false; break; }
+      }
+      if (ok && t0 < best && t0 > 0) best = t0;
+    }
+    return best;
+  }
+  const visible = (a, b) => raycast(a, b, 'sight') >= 0.999;
+
+  function addSurface(x1, z1, x2, z2, name) { surfaces.push({ area: owner, x1: Math.min(x1, x2), z1: Math.min(z1, z2), x2: Math.max(x1, x2), z2: Math.max(z1, z2), name }); }
+  function surfaceAt(x, z, y = 1e4) {
+    for (let i = surfaces.length - 1; i >= 0; i--) { const s = surfaces[i]; if (x >= s.x1 && x <= s.x2 && z >= s.z1 && z <= s.z2) return s.name; }
+    let top = null, g = -1e9;
+    for (const b of boxes) if (b.surface && b.max.y <= y + STEP && b.max.y > g && x >= b.min.x && x <= b.max.x && z >= b.min.z && z <= b.max.z) { g = b.max.y; top = b.surface; }
+    return top || baseSurface;
+  }
+
+  return {
+    boxes, addBox, addObject, removeBox, clear, groundAt, move, raycast, visible, addSurface, surfaceAt, STEP,
+    set terrain(fn) { terrain = fn; }, get terrain() { return terrain; },
+    set baseSurface(s) { baseSurface = s; }, get baseSurface() { return baseSurface; },
+    set owner(id) { owner = id; }, get owner() { return owner; },
+  };
+})();
+
+// ===== 180_play.js =====
+// ============================================================================
+// Play — player controller, third-person camera, (later) combat, stealth, crafting,
+// inventory, health. Owned by: core (Prologue scope) then systems agent (Chapter 1+).
+//
+// CONTRACT
+//   Play.setPlayer(char | null, profile)  profile: { walk=1.5, jog=3.2, run=5.2 (0 disables), accel=8, canCrouch, canJump,
+//        combat=false, hud=false, carry: Character (being carried; forces carry gait), limp, speedMul, footsteps=true }
+//   Play.char, Play.enabled, Play.enable(on)      (disabled = no input; camera still follows)
+//   Play.update(dt)                                reads Input, moves the player with World collisions, updates camPose
+//   Play.camPose { pos: Vector3, target: Vector3, fov }   gameplay camera (Director blends to/from this)
+//   Play.snapCamera()                              place camPose behind the player instantly (after teleports)
+//   Play.lookMode(anchor Object3D | null, {yaw:[min,max], pitch:[min,max], fov, offset:[x,y,z]})  camera-only look-around from an
+//        anchor (e.g. a car back seat). Input.look rotates within limits; movement disabled. null returns to OTS.
+//   Play.forceLook(point | null, strength 0..1)    pull the view toward a point (e.g. "camera is forced away" beats)
+//   Play.nudge(point, dur=1)                       soft camera nudge toward a subject without taking control
+//   Play.shake(amount, dur)                        camera shake (respects SETTINGS.shake)
+//   Play.health / Play.maxHealth / Play.damage(n, src) / Play.heal(n)  → Game.die() at 0
+//   Play.inventory, Play.resetInventory(), Play.setInventory(obj), Play.give(item, n)
+// ============================================================================
+const Play = (() => {
+  let char = null, profile = {}, enabled = false;
+  const camPose = { pos: new THREE.Vector3(0, 2, 5), target: new THREE.Vector3(), fov: 70 };
+  let camYaw = 0, camPitch = 0.12, speed = 0, lookAnchor = null, lookOpts = null, lookYaw = 0, lookPitch = 0;
+  let nudge = null, forced = null, shakeAmt = 0, shakeT = 0, stepAcc = 0;
+  const vel = new THREE.Vector3(), tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3(), camDist = { v: 2.2 };
+  const DEF = { walk: 1.5, jog: 3.2, run: 5.2, accel: 8, footsteps: true };
+
+  function setPlayer(c, p = {}) { char = c; profile = Object.assign({}, DEF, p); speed = 0; if (c) { camYaw = c.yaw + Math.PI; snapCamera(); } }
+  function enable(on) { enabled = !!on; if (on) Input.lock(); }
+  function snapCamera() { if (!char) return; camYaw = char.yaw; camPitch = 0.12; computeOts(1e3); }
+
+  function computeOts(dt) {
+    const p = char.root.position;
+    const back = camDist.v, side = 0.45, h = 1.55 * (char.height / 1.8);
+    const fx = Math.sin(camYaw), fz = Math.cos(camYaw);
+    const pivot = tmp.set(p.x, p.y + h, p.z);
+    const cp = Math.cos(camPitch), sp = Math.sin(camPitch);
+    const want = tmp2.set(pivot.x - fx * back * cp + fz * -side, pivot.y + sp * back, pivot.z - fz * back * cp - fx * -side);
+    // camera collision: pull in toward the pivot
+    const t = World.raycast(pivot, want, 'cam');
+    if (t < 1) want.lerpVectors(pivot, want, Math.max(0.15, t - 0.08));
+    const k = 1 - Math.exp(-18 * dt);
+    camPose.pos.lerp(want, k);
+    const look = pivot.clone().add(new THREE.Vector3(fx * 4, -sp * 2.5, fz * 4)).add(new THREE.Vector3(fz * -side * 0.5, 0, -fx * -side * 0.5));
+    if (nudge) { nudge.t += dt; const w = Math.sin(Math.PI * U.clamp(nudge.t / nudge.dur)) * 0.35; look.lerp(nudge.point, w); if (nudge.t >= nudge.dur) nudge = null; }
+    camPose.target.lerp(look, k);
+    camPose.fov = SETTINGS.fov;
+  }
+
+  function update(dt) {
+    if (!char) return;
+    if (lookAnchor) { updateLook(dt); return; }
+    const ctl = enabled && !Director.active;
+    // camera orbit
+    if (ctl) { camYaw -= Input.look.x; camPitch = U.clamp(camPitch + Input.look.y, -0.5, 0.9); }
+    // movement relative to camera
+    let mx = ctl ? Input.move.x : 0, my = ctl ? Input.move.y : 0;
+    const carry = !!profile.carry;
+    let top = profile.walk;
+    if (ctl && Input.down('sprint') && profile.run > 0 && !carry) top = profile.run;
+    else if (carry || profile.limp) top = profile.jog > 0 ? Math.min(profile.jog, carry ? 2.4 : 1.2) : profile.walk;
+    else if (Math.hypot(mx, my) > 0.6 && profile.jog > 0) top = profile.jog;
+    top *= profile.speedMul ?? 1;
+    const inputMag = Math.min(1, Math.hypot(mx, my));
+    const target = inputMag * top;
+    speed = U.damp(speed, target, target > speed ? profile.accel * 0.6 : profile.accel, dt);
+    if (inputMag > 0.05) {
+      const fx = Math.sin(camYaw), fz = Math.cos(camYaw);
+      const dx = fx * my - fz * mx, dz = fz * my + fx * mx;   // camera-forward/right
+      const want = Math.atan2(dx, dz);
+      char.yaw = U.angleDamp(char.yaw, want, speed > 4 ? 5 : 10, dt);
+    }
+    if (speed > 0.01) {
+      const p = char.root.position, f = U.fwd(char.yaw, tmp);
+      const r = World.move(p.x, p.y, p.z, f.x * speed * dt, f.z * speed * dt, 0.33, char.height);
+      p.x = r.x; p.z = r.z;
+      const g = World.groundAt(p.x, p.z, p.y + 0.01, 0.1);
+      p.y = g > p.y ? U.damp(p.y, g, 25, dt) : Math.max(g, p.y - 6 * dt);
+      if (profile.footsteps) { stepAcc += speed * dt; const stride = speed > 4 ? 1.6 : 1.25; if (stepAcc > stride) { stepAcc = 0; Audio.footstep(World.surfaceAt(p.x, p.z, p.y), p, U.clamp(speed / 5)); } }
+    }
+    char.setMove(speed, { carry, limp: profile.limp });
+    camDist.v = U.damp(camDist.v, 2.2, 4, dt);
+    computeOts(dt);
+    applyShake(dt);
+  }
+
+  function updateLook(dt) {
+    const o = lookOpts;
+    if (enabled) { lookYaw = U.clamp(lookYaw - Input.look.x, o.yaw[0], o.yaw[1]); lookPitch = U.clamp(lookPitch - Input.look.y, o.pitch[0], o.pitch[1]); }
+    if (forced) { lookYaw = U.damp(lookYaw, forced.yaw, 6 * forced.k, dt); }
+    lookAnchor.updateWorldMatrix(true, false);
+    camPose.pos.set(...(o.offset || [0, 0, 0])).applyMatrix4(lookAnchor.matrixWorld);
+    const q = new THREE.Quaternion().setFromRotationMatrix(lookAnchor.matrixWorld);
+    const dir = tmp.set(Math.sin(lookYaw) * Math.cos(lookPitch), Math.sin(lookPitch), Math.cos(lookYaw) * Math.cos(lookPitch)).applyQuaternion(q);
+    camPose.target.copy(camPose.pos).add(dir);
+    camPose.fov = o.fov || SETTINGS.fov;
+    applyShake(dt);
+  }
+  function lookMode(anchor, o = {}) { lookAnchor = anchor; lookOpts = Object.assign({ yaw: [-2, 2], pitch: [-0.6, 0.5] }, o); lookYaw = o.startYaw || 0; lookPitch = 0; if (!anchor) forced = null; }
+  // yaw-space force toward a world point (look mode) — computed relative to anchor
+  function forceLook(point, k = 1) {
+    if (!point || !lookAnchor) { forced = null; return; }
+    const inv = new THREE.Matrix4().copy(lookAnchor.matrixWorld).invert();
+    const lp = U.v3(point, tmp).applyMatrix4(inv);
+    forced = { yaw: Math.atan2(lp.x, lp.z), k };
+  }
+  function applyShake(dt) {
+    if (shakeT <= 0 || !SETTINGS.shake) return;
+    shakeT -= dt; const a = shakeAmt * U.clamp(shakeT * 2);
+    camPose.pos.x += (Math.random() - 0.5) * a; camPose.pos.y += (Math.random() - 0.5) * a;
+  }
+
+  const inventory = {};
+  function resetInventory() { for (const k in inventory) delete inventory[k]; Object.assign(inventory, { ammo: {}, items: {}, weapons: [] }); }
+  resetInventory();
+
+  return {
+    setPlayer, enable, update, snapCamera, lookMode, forceLook, camPose, inventory, resetInventory,
+    setInventory(o) { resetInventory(); Object.assign(inventory, JSON.parse(JSON.stringify(o))); },
+    give(item, n = 1) { inventory.items[item] = (inventory.items[item] || 0) + n; },
+    nudge(point, dur = 1) { nudge = { point: U.v3(point).clone(), dur, t: 0 }; },
+    shake(a, d) { shakeAmt = a; shakeT = d; },
+    health: 100, maxHealth: 100, damage() {}, heal() {},
+    get char() { return char; }, get enabled() { return enabled; }, get speed() { return speed; }, get profile() { return profile; },
+    get camYaw() { return camYaw; }, set camYaw(v) { camYaw = v; },
+  };
+})();
+
+// ===== 190_director.js =====
+// ============================================================================
+// Director — plays cutscene scripts from CONTENT.scenes; owns the final camera pose each
+// frame (blends gameplay <-> cinematic), letterbox, DOF focus, cues. Owned by: cinema agent.
+// THIS IS A STUB: keep every API below, replace the implementation. Full format: ARCHITECTURE.md.
+//
+// CONTRACT
+//   Director.play(id, {skippable}) -> Promise   resolves when the scene ends (after its exit blend starts)
+//   Director.active (bool), Director.sceneId
+//   Director.update(dt)       advance scene time: actions, lines, cues, shot changes
+//   Director.camUpdate(dt)    write Engine.camera from: active shot | manual pose | blend-out | Play.camPose
+//   Director.stop()           abort silently (flow cancelled)
+//   Director.skip()           jump to end state, apply side effects (scene.end), blend to gameplay
+//   Director.manual(pose | null)  free camera override outside scenes (title screen, drive): {pos, target, fov} (Vector3s)
+// ============================================================================
+const Director = (() => {
+  let active = false, sceneId = null, manualPose = null, resolveEnd = null;
+  const cine = { pos: new THREE.Vector3(), target: new THREE.Vector3(), fov: 50 };
+  const P = (spec, out = new THREE.Vector3()) => {
+    if (Array.isArray(spec)) return out.fromArray(spec);
+    if (typeof spec === 'string') { const [w, part] = spec.split('.'); const c = Game.who(w); if (c) return c.point(part || 'head', out); const m = Game.G.marker(spec); return m ? out.copy(m.pos) : out; }
+    return out;
+  };
+  async function play(id) {
+    const s = CONTENT.scenes[id]; if (!s) { console.error('no scene ' + id); return; }
+    active = true; sceneId = id; UI.letterbox(s.letterbox !== false);
+    for (const shot of s.shots) {
+      if (!active) break;
+      const c = shot.cam || {};
+      P(c.from || c.at || [0, 1.6, 4], cine.pos); P(c.look || [0, 1.5, 0], cine.target); cine.fov = U.lensToFov(c.lens || 35);
+      for (const l of shot.lines || []) { if (!active) break; await Dialogue.say(l.who, l.text, l); }
+      if (!(shot.lines || []).length) await Game.G.wait(c.dur || 2);
+    }
+    active = false; sceneId = null; UI.letterbox(false);
+  }
+  function camUpdate() {
+    const cam = Engine.camera, pose = active ? cine : manualPose || Play.camPose;
+    cam.position.copy(pose.pos); cam.lookAt(pose.target);
+    if (cam.fov !== pose.fov) { cam.fov = pose.fov; cam.updateProjectionMatrix(); }
+  }
+  return {
+    play, update() {}, camUpdate, stop() { active = false; }, skip() { active = false; },
+    manual(p) { manualPose = p; }, get active() { return active; }, get sceneId() { return sceneId; },
+  };
+})();
+
+// ===== 200_dialogue.js =====
+// ============================================================================
+// Dialogue — spoken lines (subtitles + face visemes + optional voice), walk-and-talk queue
+// with interruption/resume, optional conversations, barks with cooldowns. Owned by: cinema agent.
+// THIS IS A STUB: keep every API below, replace the implementation.
+//
+// CONTRACT
+//   Dialogue.say(who, text, {emote, dur, pause, off, via, to}) -> Promise   one line; resolves when it ends.
+//        who: speaker id (CONTENT.speakers) — animates Game.who(who) if present (speak visemes, emote, lookAt `to`).
+//        via: 'phone'|'radio'|'tape'|'tv'|'recording'|'V.O.' → name suffix "WAI (phone)"; off:true → "[WAI]"
+//        dur default = max(1.6, words × 0.32 + 0.6); if SETTINGS.voice, timing follows the voice's end.
+//   Dialogue.lineDur(text) -> seconds
+//   Dialogue.talk(id, {speakers}) -> Promise   walk-and-talk from CONTENT.talks[id] = {lines, resume, priority, maxDist}
+//        pauses when the player is > 12 m from the speaker; interrupted by combat (Dialogue.interrupt()) and resumes with `resume` line
+//   Dialogue.optional(id) -> Promise           optional conversation (no letterbox)
+//   Dialogue.bark(who, category, {pos}) -> bool  CONTENT.barks[who][category]; 8–20 s per-speaker cooldown, 60 s per exact line
+//   Dialogue.interrupt() / Dialogue.resume()
+//   Dialogue.busy (a line is playing), Dialogue.stop() (clear everything, flow cancelled)
+//   Dialogue.update(dt)
+//   Dialogue.speaker(who) -> {name, color, voice}
+// ============================================================================
+const Dialogue = (() => {
+  let busy = false;
+  const speaker = who => Object.assign({ name: String(who).toUpperCase(), color: '#B0A8A0', voice: [1, 1] }, CONTENT.speakers[who]);
+  const lineDur = text => Math.max(1.6, U.words(text) * 0.32 + 0.6);
+  async function say(who, text, o = {}) {
+    const sp = speaker(who), dur = o.dur || lineDur(text);
+    const c = Game.who(who); if (c) { c.speak(text, dur); if (o.emote) c.emote(o.emote); }
+    busy = true;
+    UI.subtitle(o.off ? `[${sp.name}]` : sp.name + (o.via ? ` (${o.via})` : ''), text, sp.color);
+    try { await Game.G.wait(dur); } finally { UI.subtitle(null); busy = false; }
+  }
+  return {
+    say, lineDur, speaker, talk: async () => {}, optional: async () => {}, bark: () => false, interrupt() {}, resume() {},
+    stop() { busy = false; UI.subtitle(null); }, update() {}, get busy() { return busy; },
+  };
+})();
+
+// ===== 210_ui.js =====
+// ============================================================================
+// UI — DOM overlay: loading, click-to-begin, title menu, pause, settings, chapters, extras,
+// fades, letterbox, subtitles, prompts, manual-page chapter cards (canvas), title text, HUD,
+// phone-screen overlays, skip ring, death, choice screen, credits, journal, backpack.
+// Owned by: cinema agent. THIS IS A STUB: keep every API below, replace the implementation.
+//
+// CONTRACT
+//   UI.init() · UI.update(dt)
+//   UI.loading(pct 0..1 | null)            boot screen: pulsing coiled-cord icon + percentage (null hides)
+//   UI.clickToBegin() -> Promise           "Click to begin" (unlocks audio)
+//   UI.titleScreen()                       logo + menu (CONTINUE, NEW GAME, CHAPTERS, SETTINGS, EXTRAS) over the live TITLE area
+//   UI.hideMenus() · UI.menuOpen() -> bool · UI.pauseMenu(on)
+//   UI.fade(to 'black'|'white'|'none', dur) -> Promise
+//   UI.letterbox(on, dur=0.6)             2.39:1 bars
+//   UI.subtitle(name|null, text, color)    bottom-centre; respects SETTINGS.subtitles/subSize/subBg/subNames
+//   UI.prompt(text|null)                   small lowercase prompt bottom-centre ("e – talk")
+//   UI.card(chapterId) -> Promise          chapter opening: The Yes Way manual page (CONTENT.chapters[id].card) then title + season
+//   UI.titleText(lines[], {hold, fadeIn, fadeOut, size, gap}) -> Promise   thin widely-spaced white capitals, centred, over black or image
+//   UI.phone(state|null)                   phone screen overlay (see ARCHITECTURE.md "phone overlay")
+//   UI.hud(state)                          {show, health 0..1, weapon, ammo, reserve, throwable, listen}
+//   UI.skipRing(p 0..1 | null)
+//   UI.death(cause) -> Promise             fade to black under a click; resolves when retry should start (< 3 s)
+//   UI.endOfBuild()                        "End of current build" screen with Return to title
+//   UI.detect(dirRadians, amount 0..1)     stealth detection arc at the screen edge
+// ============================================================================
+const UI = (() => {
+  let root, fadeEl, subEl, promptEl, lbTop, lbBot, loadEl, textEl;
+  const css = `
+  .ui-full{position:absolute;inset:0}
+  #ui-fade{background:#000;opacity:0;transition:opacity .01s linear}
+  .ui-lb{position:absolute;left:0;right:0;height:0;background:#000;transition:height .6s ease}
+  #ui-sub{position:absolute;left:50%;bottom:9%;transform:translateX(-50%);max-width:44ch;text-align:center;font-size:22px;line-height:1.35;text-shadow:0 1px 3px #000,0 0 8px #000;padding:6px 14px;border-radius:4px}
+  #ui-prompt{position:absolute;left:50%;bottom:4%;transform:translateX(-50%);font-size:14px;letter-spacing:.08em;opacity:.85;text-transform:lowercase}
+  #ui-load{display:flex;align-items:center;justify-content:center;font-size:13px;letter-spacing:.2em;background:#000;pointer-events:auto}
+  #ui-text{display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:200;letter-spacing:.5em;font-size:28px;text-align:center;opacity:0}
+  `;
+  const el = (tag, id, cls) => { const e = document.createElement(tag); if (id) e.id = id; if (cls) e.className = cls; root.appendChild(e); return e; };
+  function init() {
+    root = document.getElementById('ui');
+    const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+    lbTop = el('div', null, 'ui-lb'); lbTop.style.top = 0; lbBot = el('div', null, 'ui-lb'); lbBot.style.bottom = 0;
+    subEl = el('div', 'ui-sub'); promptEl = el('div', 'ui-prompt'); textEl = el('div', 'ui-text', 'ui-full');
+    fadeEl = el('div', 'ui-fade', 'ui-full'); loadEl = el('div', 'ui-load', 'ui-full');
+  }
+  function fade(to, dur = 1) {
+    fadeEl.style.transition = `opacity ${dur}s linear`;
+    fadeEl.style.background = to === 'white' ? '#fff' : '#000';
+    fadeEl.style.opacity = to === 'none' ? 0 : 1;
+    return Game.G.wait(dur).catch(() => {});
+  }
+  function letterbox(on, dur = 0.6) { const h = on ? `${Math.max(0, (innerHeight - innerWidth / 2.39) / 2)}px` : '0px'; for (const b of [lbTop, lbBot]) { b.style.transition = `height ${dur}s ease`; b.style.height = h; } }
+  function subtitle(name, text, color) { if (!name && !text) { subEl.innerHTML = ''; return; } subEl.innerHTML = (name ? `<b style="color:${color}">${name}:</b> ` : '') + text; }
+  function prompt(t) { promptEl.textContent = t || ''; }
+  function loading(p) { if (p == null) { loadEl.style.display = 'none'; return; } loadEl.style.display = 'flex'; loadEl.textContent = Math.round(p * 100) + '%'; }
+  function clickToBegin() { loadEl.style.display = 'flex'; loadEl.textContent = 'Click to begin'; return new Promise(r => loadEl.addEventListener('click', () => { loadEl.style.display = 'none'; r(); }, { once: true })); }
+  async function titleText(lines, o = {}) { textEl.innerHTML = lines.map(l => `<div>${l}</div>`).join(''); textEl.style.transition = `opacity ${o.fadeIn ?? 1.5}s`; textEl.style.opacity = 1; await Game.G.wait((o.fadeIn ?? 1.5) + (o.hold ?? 3)); textEl.style.transition = `opacity ${o.fadeOut ?? 1.5}s`; textEl.style.opacity = 0; await Game.G.wait(o.fadeOut ?? 1.5); }
+  return {
+    init, update() {}, loading, clickToBegin, titleScreen() { Game.newGame(); }, hideMenus() {}, menuOpen: () => false, pauseMenu() {},
+    fade, letterbox, subtitle, prompt, card: async () => {}, titleText, phone() {}, hud() {}, skipRing() {},
+    death: async () => { await fade('black', 0.8); }, endOfBuild() { subtitle('', 'End of current build'); }, detect() {},
+  };
+})();
+
+// ===== 220_save.js =====
+// ============================================================================
+// Save — checkpoints, progress and settings in localStorage (inside try/catch; the game
+// runs normally if storage is blocked). Owned by: core.
+// ============================================================================
+const Save = (() => {
+  const KEY = 'the-last-of-yes.v1';
+  const fresh = () => ({ version: 1, checkpoint: null, chapters: [], scenesSeen: [], collectibles: { artifacts: [], lanyards: [], modules: [] }, finished: false, endings: [], settings: null });
+  let data = fresh();
+
+  function read() { try { const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+  function write() { try { data.settings = JSON.parse(JSON.stringify(SETTINGS)); localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { /* storage blocked: keep going in memory */ } }
+
+  function init() {
+    const s = read();
+    if (s && s.version === 1) data = Object.assign(fresh(), s);
+    if (data.settings) { const v = Object.assign({}, SETTINGS.vol, data.settings.vol); Object.assign(SETTINGS, data.settings); SETTINGS.vol = v; }
+  }
+
+  return {
+    init, write,
+    get data() { return data; },
+    hasContinue: () => !!data.checkpoint,
+    newGame() { data.checkpoint = null; write(); },
+    checkpoint(s) { data.checkpoint = s; write(); },
+    unlockChapter(id) { if (!data.chapters.includes(id)) { data.chapters.push(id); write(); } },
+    sawScene(id) { if (!data.scenesSeen.includes(id)) { data.scenesSeen.push(id); write(); } },
+    seen: id => data.scenesSeen.includes(id),
+    collect(kind, id) { const l = data.collectibles[kind]; if (l && !l.includes(id)) { l.push(id); write(); return true; } return false; },
+    finish(ending) { data.finished = true; if (!data.endings.includes(ending)) data.endings.push(ending); data.lastEnding = ending; write(); },
+    saveSettings: write,
+  };
+})();
+
+// ===== 230_game.js =====
+// ============================================================================
+// Game — chapter flow, area loading/unloading, the G API used by content, triggers,
+// interactables, checkpoints, death/retry, pause, the per-frame tick. Owned by: core.
+//
+// Flow model: CONTENT.chapters[id].steps is an ordered list of { id, checkpoint, run: async G => {} }.
+// A step with checkpoint:true autosaves when it starts; death/retry restarts the last checkpoint step.
+// Every checkpoint step must establish its own state at the start (G.area, G.actor placement, G.player).
+// Any G.* promise rejects with Game.ABORT when the flow is cancelled (retry, quit, chapter select);
+// Game swallows ABORT, so content never needs to handle it.
+// ============================================================================
+const Game = (() => {
+  const ABORT = Symbol('abort');
+  let runId = 0;
+  const waits = new Set();              // { check(dt) -> bool, resolve, reject, id }
+  let area = null;                      // primary area (the one the player is in)
+  const areas = new Map();              // every loaded area by id (usually just one; scenes may intercut two)
+  const actors = {};                    // persistent named characters (chase, chloe, …)
+  let flags = {};
+  let chapterId = null, stepIndex = 0, lastCheckpoint = null;
+  let paused = false, state = 'boot', time = 0, timeScale = 1;
+  let focusIt = null;                   // interactable currently prompted
+
+  // ---- areas -------------------------------------------------------------
+  // Area context. Everything inside def.build(A) is in AREA-LOCAL coordinates: A.group sits at def.origin,
+  // and A.marker / A.interactable / A.char / A.collider / A.w() convert local -> world.
+  function makeArea(id) {
+    const def = CONTENT.levels[id];
+    if (!def) throw new Error('Unknown area ' + id);
+    const origin = U.v3(def.origin || [0, 0, 0]).clone();
+    const w = (p, out = new THREE.Vector3()) => U.v3(p, out).add(origin);
+    const A = {
+      id, def, origin, w, group: new THREE.Group(), markers: {}, interactables: [], updaters: [], chars: [], data: {},
+      add(o) { A.group.add(o); return o; },
+      marker(name, pos, yaw = 0) { A.markers[name] = { pos: w(pos), yaw }; return A.markers[name]; },
+      update(fn) { A.updaters.push(fn); return fn; },
+      // Interactable: { id, at:[x,y,z] (local), r, prompt:'e – look', once, cond:()=>bool, use: async (G, it) => {} }
+      interactable(o) { const it = Object.assign({ r: 1.4, once: true, used: false }, o); it.pos = w(o.at); A.interactables.push(it); return it; },
+      // Area-local character (disposed with the area). o.at is local unless it is a marker name.
+      char(defId, o = {}) { const c = Chars.create(defId, o); place(c, typeof o.at === 'string' ? o.at : w(o.at ?? [0, 0, 0]), o.yaw); A.chars.push(c); return c; },
+      collider: (min, max, o) => World.addBox(w(min), w(max), o),
+      surface: (x1, z1, x2, z2, name) => World.addSurface(x1 + origin.x, z1 + origin.z, x2 + origin.x, z2 + origin.z, name),
+    };
+    A.group.name = 'area:' + id;
+    A.group.position.copy(origin);
+    A.group.updateMatrixWorld(true);
+    return A;
+  }
+
+  function disposeObject(root) {
+    root.traverse(o => {
+      if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose();
+      const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+      for (const m of ms) if (!m.userData.shared) { for (const k in m) { const v = m[k]; if (v && v.isTexture && !v.userData.shared) v.dispose(); } m.dispose(); }
+      if (o.isLight && o.shadow && o.shadow.map) o.shadow.map.dispose();
+    });
+  }
+
+  function unloadArea(id) {
+    const A = areas.get(id); if (!A) return;
+    try { A.def.unload && A.def.unload(A); } catch (e) { console.error(e); }
+    for (const c of A.chars) c.dispose();
+    Engine.scene.remove(A.group);
+    disposeObject(A.group);
+    World.clear(id);
+    areas.delete(id);
+    if (area === A) area = null;
+  }
+
+  // Load an area and make it primary. By default every other area is unloaded; {keep:true} keeps them
+  // (for scenes that intercut two places — give such areas distinct def.origin offsets).
+  async function loadArea(id, o = {}) {
+    if (area && area.id === id && !o.reload) return area;
+    if (!o.keep) { AI.clear(); for (const k of [...areas.keys()]) if (k !== id) unloadArea(k); }
+    let A = areas.get(id);
+    if (!A) {
+      A = makeArea(id);
+      areas.set(id, A);
+      World.owner = id;
+      Build.begin(A);
+      try { A.def.build(A); } finally { Build.end(A); World.owner = null; }
+      Engine.scene.add(A.group);
+    }
+    area = A;
+    applyLook(A.def);
+    Engine.renderer.compile(Engine.scene, Engine.camera);
+    return A;
+  }
+  // Fog, background, environment, grade, ambience of an area (also used when a scene cuts between areas).
+  function applyLook(d) {
+    Engine.setGrade(d.grade || 'neutral');
+    Engine.scene.fog = d.fog ? (d.fog.density != null ? new THREE.FogExp2(d.fog.color, d.fog.density) : new THREE.Fog(d.fog.color, d.fog.near, d.fog.far)) : null;
+    Engine.scene.background = d.background != null ? (d.background.isTexture ? d.background : new THREE.Color(d.background)) : new THREE.Color(d.fog ? d.fog.color : 0x000000);
+    Engine.setEnv(d.env ?? null);
+    World.baseSurface = d.surface || 'concrete';
+    Audio.amb(d.amb || null, 1.5);
+  }
+
+  // ---- characters --------------------------------------------------------
+  function resolveAt(at) {
+    if (at == null) return null;
+    if (typeof at === 'string') { let m = area && area.markers[at]; if (!m) for (const A of areas.values()) if (A.markers[at]) { m = A.markers[at]; break; } if (!m) { console.warn('missing marker ' + at); return { pos: new THREE.Vector3(), yaw: 0 }; } return m; }
+    if (at.isVector3) return { pos: at, yaw: undefined };
+    if (Array.isArray(at)) return { pos: U.v3(at), yaw: undefined };
+    return at; // {pos,yaw}
+  }
+  function place(c, at, yaw) {
+    const m = resolveAt(at);
+    if (m) c.root.position.copy(m.pos);
+    const y = yaw ?? m?.yaw; if (y != null) c.yaw = y;
+    if (c.stop) c.stop();
+    return c;
+  }
+  // Get or create a persistent named actor. defId defaults to id.
+  function actor(id, defId, at, yaw) {
+    let c = actors[id];
+    if (c && defId && c.def.id !== defId) { c.dispose(); c = null; }
+    if (!c) { c = actors[id] = Chars.create(defId || id, { name: id }); }
+    c.setVisible(true);
+    if (at != null) place(c, at, yaw);
+    return c;
+  }
+  function removeActor(id) { const c = actors[id]; if (c) { c.dispose(); delete actors[id]; } }
+  // Look up any speaker/actor by id (persistent actors first, then area chars with .name)
+  function who(id) { if (!id) return null; if (typeof id !== 'string') return id; if (actors[id]) return actors[id]; for (const A of areas.values()) { const c = A.chars.find(c => c.name === id); if (c) return c; } return AI.byName?.(id) || null; }
+
+  // ---- waits ---------------------------------------------------------------
+  function wait(check) {
+    const my = runId;
+    return new Promise((resolve, reject) => { const w = { check, resolve, reject, id: my }; waits.add(w); });
+  }
+  function guard(p) { const my = runId; return Promise.resolve(p).then(v => { if (my !== runId) throw ABORT; return v; }); }
+  const flowIts = [];                   // interactables created by G.interact (retired on cancel)
+  function cancelWaits() { for (const w of waits) w.reject(ABORT); waits.clear(); for (const it of flowIts) it.used = true; flowIts.length = 0; }
+
+  // ---- G: the API content uses --------------------------------------------
+  const G = {
+    ABORT,
+    area: (id, o) => guard(loadArea(id, o)),
+    unload: id => unloadArea(id),
+    look: id => applyLook(CONTENT.levels[id]),
+    get A() { return area; },
+    areaById: id => areas.get(id),
+    get t() { return time; },
+    get actors() { return actors; },
+    flags: new Proxy({}, { get: (_, k) => flags[k], set: (_, k, v) => { flags[k] = v; return true; } }),
+    actor, removeActor, who, place,
+    marker: name => resolveAt(name),
+    scene: (id, opts) => guard(Director.play(id, opts)),
+    player: (id, profile) => { const c = typeof id === 'string' ? actor(id) : id; Play.setPlayer(c, profile); return c; },
+    control: on => Play.enable(on),
+    wait: sec => { let t = 0; return wait(dt => (t += dt) >= sec); },
+    until: fn => wait(() => fn()),
+    // resolves when the player enters a sphere {at, r} or rectangle {box:[x1,z1,x2,z2]}
+    zone: o => { const p = o.at && U.v3(o.at); return wait(() => { const pl = Play.char; if (!pl) return false; const q = pl.root.position; return o.box ? (q.x >= Math.min(o.box[0], o.box[2]) && q.x <= Math.max(o.box[0], o.box[2]) && q.z >= Math.min(o.box[1], o.box[3]) && q.z <= Math.max(o.box[1], o.box[3])) : q.distanceTo(p) <= (o.r ?? 2); }); },
+    // resolves when the player uses it. o: {at, r, prompt, face}
+    interact: o => {
+      let it = null;
+      const p = wait(() => it.used);
+      it = area.interactable(Object.assign({ prompt: 'e – interact' }, o, { use: () => { it.used = true; } }));
+      flowIts.push(it);
+      return p;
+    },
+    say: (w, text, o) => guard(Dialogue.say(w, text, o)),
+    talk: (id, o) => guard(Dialogue.talk(id, o)),
+    fade: (to, dur = 1) => guard(UI.fade(to, dur)),
+    card: id => guard(UI.card(id)),
+    title: (lines, o) => guard(UI.titleText(lines, o)),
+    music: (id, o) => Audio.music(id, o),
+    sfx: (id, o) => Audio.sfx(id, o),
+    amb: (id, fade) => Audio.amb(id, fade),
+    spawn: (type, at, o = {}) => AI.spawn(type, resolveAt(at), o),
+    hook: (name, args) => guard(CONTENT.hooks[name](G, args)),
+    grade: (g, dur) => Engine.setGrade(g, dur),
+    save: () => saveCheckpoint(),
+  };
+
+  // ---- flow ----------------------------------------------------------------
+  function snapshot() { return { chapter: chapterId, step: CONTENT.chapters[chapterId].steps[stepIndex].id, inv: Play.inventory ? JSON.parse(JSON.stringify(Play.inventory)) : null, flags: JSON.parse(JSON.stringify(flags)) }; }
+  function saveCheckpoint() { lastCheckpoint = snapshot(); Save.checkpoint(lastCheckpoint); }
+
+  async function runFrom(chId, stepId) {
+    const my = ++runId; cancelWaits(); Director.stop(); Dialogue.stop(); UI.prompt(null);
+    state = 'play'; paused = false;
+    chapterId = chId;
+    const ch = CONTENT.chapters[chId];
+    if (!ch) { console.error('no chapter ' + chId); return; }
+    let i = stepId ? ch.steps.findIndex(s => s.id === stepId) : 0;
+    if (i < 0) i = 0;
+    Save.unlockChapter(chId);
+    for (; i < ch.steps.length; i++) {
+      if (my !== runId) return;
+      stepIndex = i;
+      const st = ch.steps[i];
+      if (st.checkpoint) saveCheckpoint();
+      try { await st.run(G); }
+      catch (e) { if (e === ABORT) return; console.error(e); return; }
+    }
+    if (my !== runId) return;
+    const order = CONTENT.chapterOrder, next = order[order.indexOf(chId) + 1];
+    if (next && CONTENT.chapters[next]) return runFrom(next);
+    UI.endOfBuild();
+  }
+
+  function newGame() { flags = {}; if (Play.resetInventory) Play.resetInventory(); Save.newGame(); return startChapter(CONTENT.chapterOrder[0]); }
+  function continueGame() { const s = Save.data.checkpoint; if (!s) return newGame(); restore(s); return runFrom(s.chapter, s.step); }
+  function startChapter(chId, stepId) { flags = {}; if (Play.resetInventory) Play.resetInventory(); UI.hideMenus && UI.hideMenus(); return runFrom(chId, stepId); }
+  function restore(s) { flags = JSON.parse(JSON.stringify(s.flags || {})); if (s.inv && Play.setInventory) Play.setInventory(s.inv); }
+  function retry() { const s = lastCheckpoint || Save.data.checkpoint; if (!s) return; restore(s); return runFrom(s.chapter, s.step); }
+  async function die(cause) {
+    if (state !== 'play') return;
+    const my = runId;
+    Play.enable(false);
+    await UI.death(cause);
+    if (my === runId) retry();
+  }
+  function quitToTitle() { ++runId; cancelWaits(); Director.stop(); Dialogue.stop(); paused = false; titleScreen(); }
+
+  async function titleScreen() {
+    state = 'title';
+    Play.enable(false); Play.setPlayer(null);
+    for (const k in actors) actors[k].setVisible(false);
+    if (CONTENT.levels.TITLE) await loadArea('TITLE');
+    UI.titleScreen();
+  }
+
+  function setPaused(p) {
+    if (state !== 'play' || paused === p) return;
+    paused = p;
+    Engine.uniforms.uDesat.value = p ? 0.35 : 0;
+    Audio.pause && Audio.pause(p);
+    if (p) { Input.unlock(); UI.pauseMenu(true); } else { UI.pauseMenu(false); Input.lock(); }
+  }
+
+  // ---- interactables -------------------------------------------------------
+  const tmpV = new THREE.Vector3();
+  function updateInteract() {
+    let best = null, bd = 1e9;
+    const pl = Play.char;
+    if (area && pl && Play.enabled && !Director.active) {
+      const p = pl.root.position;
+      for (const A of areas.values()) for (const it of A.interactables) {
+        if (it.used || (it.cond && !it.cond())) continue;
+        const d = tmpV.copy(it.pos).setY(p.y).distanceTo(p);
+        if (d > it.r || Math.abs(it.pos.y - p.y) > 2.2) continue;
+        if (d < bd) { bd = d; best = it; }
+      }
+    }
+    if (best !== focusIt) { focusIt = best; UI.prompt(best ? best.prompt : null); }
+    if (best && Input.pressed('interact')) {
+      if (best.once) best.used = true;
+      focusIt = null; UI.prompt(null);
+      const r = best.use && best.use(G, best);
+      if (r && r.catch) r.catch(e => { if (e !== ABORT) console.error(e); });
+    }
+  }
+
+  // ---- tick ----------------------------------------------------------------
+  function tick(dt) {
+    Input.update(dt);
+    if (state === 'play' && Input.pressed('pause') && !UI.menuOpen?.()) setPaused(!paused);
+    if (paused || state === 'boot') { UI.update(dt); Audio.update(dt); return; }
+    const sdt = dt * timeScale;
+    time += sdt;
+    Director.update(sdt);
+    Play.update(sdt);
+    AI.update(sdt);
+    for (const A of areas.values()) for (const f of A.updaters) f(sdt, time);
+    Chars.update(sdt);
+    Dialogue.update(sdt);
+    for (const w of waits) { let done = false; try { done = w.check(sdt); } catch (e) { console.error(e); done = true; } if (done) { waits.delete(w); w.resolve(); } }
+    updateInteract();
+    Director.camUpdate(dt);
+    UI.update(dt);
+    Audio.update(dt);
+  }
+
+  return {
+    ABORT, G, tick, loadArea, unloadArea, applyLook, areas, actor, who, place, newGame, continueGame, startChapter, runFrom, retry, die, quitToTitle, titleScreen, setPaused,
+    get area() { return area; }, get actors() { return actors; }, get state() { return state; }, set state(s) { state = s; },
+    get paused() { return paused; }, get time() { return time; }, get chapter() { return chapterId; },
+    get timeScale() { return timeScale; }, set timeScale(v) { timeScale = v; }, flags: () => flags,
+  };
+})();
+
+// ===== 390_dev.js =====
+// ============================================================================
+// Dev sandbox content (only reachable with ?dev). Owned by: core.
+// ============================================================================
+CONTENT.levels.DEV = {
+  name: 'Dev yard', grade: 'neutral', fog: { color: 0x9aa6b0, near: 30, far: 120 }, env: { top: 0x7090b0, horizon: 0xb0a890, bottom: 0x403830, intensity: 0.8 },
+  build(A) {
+    Build.hemi({ sky: 0x9ab0c8, ground: 0x4a4030, intensity: 0.5 });
+    Build.sun({ dir: [-0.4, -1, -0.6], color: 0xfff0d8, intensity: 2.5, area: 25 });
+    Build.box(60, 0.1, 60, Tex.mat('concrete', { color: 0x777777, repeat: [20, 20] }), { pos: [0, -0.1, 0] });
+    for (let i = 0; i < 6; i++) Build.box(1.2, 1 + i * 0.4, 1.2, Tex.mat('brick', { color: 0x995544 }), { pos: [-6 + i * 2.4, 0, -6] });
+    A.marker('mk_start', [0, 0, 4], Math.PI);
+    A.marker('mk_a', [-1, 0, 0], Math.PI / 2);
+    A.marker('mk_b', [1, 0, 0], -Math.PI / 2);
+  },
+};
+CONTENT.scenes.TEST = {
+  title: 'Test', area: 'DEV', grade: 'neutral', letterbox: true, music: null,
+  cast: { chase: 'mk_a', chloe: 'mk_b' },
+  shots: [
+    { cam: { type: 'static', from: [0, 1.6, 5], look: [0, 1.4, 0], lens: 35 }, lines: [{ who: 'chase', text: 'Test line one.', emote: 'tense' }] },
+    { cam: { type: 'ots', over: 'chase', on: 'chloe', lens: 50 }, lines: [{ who: 'chloe', text: 'And the reply.', emote: 'smirk' }] },
+  ],
+  exit: { blend: 'gameplay', dur: 1.2 },
+};
+CONTENT.dev.smoke = async G => {
+  await G.area('DEV');
+  G.actor('chase', 'chase', 'mk_a'); G.actor('chloe', 'chloe', 'mk_b');
+  await G.scene('TEST');
+  G.player('chase'); G.control(true);
+};
+
+// ===== 900_main.js =====
+// ============================================================================
+// Main — boot, loading screen, "click to begin", the frame loop, dev hooks. Owned by: core.
+// Dev URL params (with ?dev):
+//   goto=chapter[:stepId]  start the flow there (skips boot + title)
+//   scene=ID               load the scene's area and play the scene
+//   area=ID                load an area with Chase as free-roam player at marker mk_start (or origin)
+//   test=name              run CONTENT.dev[name](G)
+//   title                  go straight to the title screen
+// window.GAME.dev.ff(sec) fast-forwards game time with fixed steps (used by tools/shot.mjs).
+// ============================================================================
+(() => {
+  let last = performance.now(), ffActive = false;
+  const errorsShown = new Set();
+  addEventListener('unhandledrejection', e => { if (e.reason === Game.ABORT) e.preventDefault(); });
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (ffActive) return;
+    const dt = Math.min((now - last) / 1000, CONFIG.maxDt); last = now;
+    try { Game.tick(dt); Engine.render(dt); }
+    catch (e) { const k = String(e && e.message); if (!errorsShown.has(k)) { errorsShown.add(k); console.error(e); } }
+  }
+
+  const macro = () => new Promise(r => { const c = new MessageChannel(); c.port1.onmessage = () => r(); c.port2.postMessage(0); });
+  const dev = {
+    async ff(sec) { ffActive = true; try { const n = Math.round(sec / CONFIG.fixedDt); for (let i = 0; i < n; i++) { Game.tick(CONFIG.fixedDt); await macro(); } } finally { ffActive = false; last = performance.now(); } },
+    render() { Engine.render(0.0001, false); },
+    goto: (ch, step) => Game.startChapter(ch, step),
+    scene: async id => { const s = CONTENT.scenes[id]; if (s && s.area) await Game.loadArea(s.area); Game.state = 'play'; return Director.play(id); },
+    area: async id => { await Game.loadArea(id); Game.state = 'play'; const c = Game.actor('chase', 'chase', Game.area.markers.mk_start ? 'mk_start' : [0, 0, 0]); Play.setPlayer(c, {}); Play.enable(true); },
+  };
+  window.GAME = { ready: false, dev, Engine, Game, Director, Play, Chars, UI, Audio, Tex, Build, World, AI, Dialogue, Save, Input, CONTENT, THREE, SETTINGS };
+
+  async function boot() {
+    Save.init();
+    Engine.init(document.getElementById('app'));
+    Input.init();
+    UI.init();
+    UI.loading(0);
+    requestAnimationFrame(frame);
+    // Pre-build procedural assets in slices so the loading percentage moves.
+    const jobs = [...(Tex.preload ? Tex.preload() : []), ...(Chars.preload ? Chars.preload() : [])];
+    for (let i = 0; i < jobs.length; i++) { jobs[i](); UI.loading((i + 1) / jobs.length); if (i % 3 === 2) await macro(); }
+    UI.loading(1);
+    const p = PARAMS;
+    if (CONFIG.dev && (p.has('goto') || p.has('scene') || p.has('area') || p.has('test') || p.has('title'))) {
+      UI.loading(null);
+      Audio.init();
+      window.GAME.ready = true;
+      if (p.has('goto')) { const [ch, st] = p.get('goto').split(':'); Game.startChapter(ch, st); }
+      else if (p.has('scene')) dev.scene(p.get('scene'));
+      else if (p.has('area')) dev.area(p.get('area'));
+      else if (p.has('test')) { Game.state = 'play'; CONTENT.dev[p.get('test')](Game.G); }
+      else Game.titleScreen();
+      return;
+    }
+    window.GAME.ready = true;
+    await UI.clickToBegin();       // unlocks audio
+    Audio.init();
+    Game.titleScreen();
+  }
+  boot().catch(e => console.error(e));
+})();
+
+</script>
+</body>
+</html>
