@@ -2,10 +2,11 @@
 // Chapter 1 — Onboarding (Summer, spec §9). Establish the world, Chase and Wai, meet Chloe, teach stealth,
 // Airplane Mode, crafting basics and the Clicker rules. Ends with Wai's sacrifice.
 // Each beat is a hook implemented next to its areas:
-//   ch1.1 ch1.2            src/310_level_1ab.js   1A Chase's room, 1B the QZ streets
-//   ch1.3 ch1.4 ch1.5 ch1.6 ch1.7   src/311_level_1ce.js   1C warehouse, 1D Landlines basement, 1E under the wall
-//   ch1.8 ch1.9 ch1.8b     src/312_level_1f.js    1F the drowned tower
-//   ch1.10 ch1.11          src/313_level_1gh.js   1G Queen Street Mall + flagship, 1H stockroom, arcade, rooftop
+//   ch1.1 ch1.2                src/310_level_1ab.js   1A Chase's room, 1B the QZ streets
+//   ch1.3 ch1.4                src/311_level_1c.js    1C the Wholesaler's warehouse
+//   ch1.5 ch1.6 ch1.7          src/312_level_1de.js   1D Landlines basement, 1E under the wall
+//   ch1.8 ch1.9 ch1.8b         src/313_level_1f.js    1F the drowned tower
+//   ch1.10 ch1.11              src/314_level_1gh.js   1G Queen Street Mall + flagship, 1H stockroom, arcade, rooftop
 // Every checkpoint beat sets up its own areas, actors, player and inventory (it may run first after a retry).
 // ============================================================================
 CONTENT.chapters.ch1 = {
