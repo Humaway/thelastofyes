@@ -43,6 +43,7 @@ const Game = (() => {
     A.group.name = 'area:' + id;
     A.group.position.copy(origin);
     A.group.updateMatrixWorld(true);
+    for (const m of [Play, AI, Dialogue, Build]) m.extendArea && m.extendArea(A);   // modules add their own A.* helpers (pickups, ladders, remarks…)
     return A;
   }
 
@@ -58,6 +59,7 @@ const Game = (() => {
   function unloadArea(id) {
     const A = areas.get(id); if (!A) return;
     try { A.def.unload && A.def.unload(A); } catch (e) { console.error(e); }
+    for (const m of [Play, AI, Dialogue, Build]) m.unloadArea && m.unloadArea(A);
     for (const c of A.chars) c.dispose();
     Engine.scene.remove(A.group);
     disposeObject(A.group);

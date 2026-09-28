@@ -1,10 +1,12 @@
 // ============================================================================
-// Play — player controller, third-person camera, (later) combat, stealth, crafting,
-// inventory, health. Owned by: core (Prologue scope) then systems agent (Chapter 1+).
+// Play — player controller, third-person camera, traversal, weapons and combat, stealth
+// (crouch, Airplane Mode), throwing, crafting, inventory, pickups, health and death.
+// Owned by: core (Prologue scope) then systems (player) agent (Chapter 1+). Spec §3 controls, §6.
 //
 // CONTRACT
 //   Play.setPlayer(char | null, profile)  profile: { walk=1.5, jog=3.2, run=5.2 (0 disables), accel=8, canCrouch, canJump,
-//        combat=false, hud=false, carry: Character (being carried; forces carry gait), limp, speedMul, footsteps=true }
+//        combat=false, hud=false, carry: Character (being carried; forces carry gait), limp, speedMul, footsteps=true,
+//        weapons:['revolver','shotgun','rifle','pistol','bow'], melee:'fists'|'box_cutter', stats:'chase'|'chloe' }
 //   Play.char, Play.enabled, Play.enable(on)      (disabled = no input; camera still follows)
 //   Play.update(dt)                                reads Input, moves the player with World collisions, updates camPose
 //   Play.camPose { pos: Vector3, target: Vector3, fov }   gameplay camera (Director blends to/from this)
@@ -14,8 +16,18 @@
 //   Play.forceLook(point | null, strength 0..1)    pull the view toward a point (e.g. "camera is forced away" beats)
 //   Play.nudge(point, dur=1)                       soft camera nudge toward a subject without taking control
 //   Play.shake(amount, dur)                        camera shake (respects SETTINGS.shake)
-//   Play.health / Play.maxHealth / Play.damage(n, src) / Play.heal(n)  → Game.die() at 0
+//   Play.health / Play.maxHealth / Play.damage(n, src) / Play.heal(n)  → Game.die() at 0; battery segments (no regen above segment)
 //   Play.inventory, Play.resetInventory(), Play.setInventory(obj), Play.give(item, n)
+//   --- Chapter 1+ (systems agent) ---
+//   Play.crouched · Play.noiseRadius (current movement noise: sprint 12, walk 6, crouch 2) · Play.visibility 0..1 · Play.aiming
+//   Play.weapon (current id) · Play.equip(id) · Play.grab(agent, kind:'scroller'|'lurker'|'clicker'|'bloatware'|'human') -> Promise<'escaped'|'killed'|'died'>
+//   Play.listening (Airplane Mode held: desaturate, Audio.muffle, silhouettes of AI.listenTargets through walls, slow move)
+//   Play.extendArea(A) adds: A.pickup({at, item, n, prompt}) · A.collectible({at, kind:'artifact'|'lanyard'|'module'|'tip', id})
+//        A.workbench({at, yaw}) · A.ladder({bottom, top}) · A.ledge({at, top, w}) · A.vault(box) · A.squeeze({from, to, onDone})
+//        A.hint(points)  (hold T nudges the camera toward the next hint point) · A.water({box, deep}) (Chloe can't swim)
+//   Weapons per spec §6 (revolver, shotgun, rifle w/ scope, pistol & bow for Chloe, breakable melee with upgrades), aim sway
+//   when hurt or after sprinting, reload, subtle crosshair flick on hit, gunshot noise, AI.hitTest for hits.
+//   Crafting per spec §6 via UI.backpack (world keeps running), throwables (bottle, brick, spicy pillow, ringtone bomb, vape cloud).
 // ============================================================================
 const Play = (() => {
   let char = null, profile = {}, enabled = false;
