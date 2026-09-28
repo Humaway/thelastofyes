@@ -224,11 +224,12 @@ retreat, smuggler, bandit, townsperson, kid, man, lurker, clicker, bloatware, ho
 Agents work in a private copy so half-finished files never break anyone else's build:
 
 ```bash
-rsync -a --delete --exclude node_modules --exclude out --exclude .git /home/user/thelastofyes/ /tmp/tloy-NAME/
-ln -sfn /home/user/thelastofyes/node_modules /tmp/tloy-NAME/node_modules
-cd /tmp/tloy-NAME   # build + test here
+tools/sandbox.sh NAME                              # creates /tmp/tloy-NAME (node_modules symlinked)
+cd /tmp/tloy-NAME && node tools/shot.mjs …         # build + test there
+tools/sandbox.sh NAME refresh src/140_build.js …   # pull everyone else's latest files, keep yours
+tools/sandbox.sh NAME deliver src/140_build.js …   # copy ONLY your own files back to the main tree
 ```
 
-When done: re-sync the *other* files from the main tree (`rsync` again but keep your own files),
-re-test, then copy **only the files you own** back into `/home/user/thelastofyes/src/` and run
-`node tools/shot.mjs --q "dev&test=smoke"` in the main tree. Never commit — the orchestrator commits.
+Before delivering: refresh, re-test in the sandbox, deliver, then run
+`node tools/shot.mjs --q "dev&test=smoke"` in `/home/user/thelastofyes`. Never commit — the orchestrator commits.
+Never edit files you don't own in the main tree; put requests for other modules in your final report.
