@@ -17,7 +17,7 @@ CONTENT.scenes.TEST = {
   title: 'Test', area: 'DEV', grade: 'neutral', letterbox: true, music: null,
   cast: { chase: 'mk_a', chloe: 'mk_b' },
   shots: [
-    { cam: { type: 'static', from: [0, 1.6, 5], look: [0, 1.4, 0], lens: 35 }, lines: [{ who: 'chase', text: 'Test line one.', emote: 'tense' }] },
+    { cam: { type: 'static', at: [0, 1.6, 4.5], look: [0, 1.4, 0], lens: 35 }, lines: [{ who: 'chase', text: 'Test line one.', emote: 'tense' }] },
     { cam: { type: 'ots', over: 'chase', on: 'chloe', lens: 50 }, lines: [{ who: 'chloe', text: 'And the reply.', emote: 'smirk' }] },
   ],
   exit: { blend: 'gameplay', dur: 1.2 },
