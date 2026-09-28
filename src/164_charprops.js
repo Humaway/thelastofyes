@@ -98,13 +98,26 @@ const CharProps = (() => {
   // grip: right-hand local placement {p, r} of the prop's origin; off: off-hand grip point (prop space)
   const P = {
     phone: () => { const o = mk('phone', geo('phone', () => PB().rbox(0.074, 0.152, 0.008, 0.004, '#15171a', [0, 0, 0], null, 0.35, 0.3).done())); screen(o, 0.068, 0.146, [0, 0, 0.0042]); o.userData.grip = { p: [0.03, -0.075, 0.0], r: [0, Math.PI / 2, 0] }; o.userData.curl = 0.55; return o; },
+    // landline handset: earpiece (toward the fingers, -Y) and mouthpiece cups facing the head (+Z), a coiled cord from its foot
+    // that hangs, or runs to userData.cordTo (an Object3D or world Vector3: the phone's base) — rebuilt while it is held
+    handset: () => {
+      const o = mk('handset', geo('handset', () => { const b = PB().rbox(0.046, 0.15, 0.03, 0.012, '#1c1d20', [0, 0, 0], null, 0.4, 0.1);
+        for (const e of [-1, 1]) b.rbox(0.056, 0.058, 0.03, 0.014, '#1c1d20', [0, e * 0.082, 0.012], [e * -0.35, 0, 0], 0.4, 0.1).cyl(0.02, 0.02, 0.004, '#2c2e32', [0, e * 0.086, 0.028], [Math.PI / 2 + e * -0.35, 0, 0], 12, 0.5, 0.1);
+        return b.done(); }));
+      const cord = new THREE.Mesh(new THREE.BufferGeometry(), pmat()); cord.frustumCulled = false; cord.castShadow = true; o.add(cord);
+      o.userData.cord = { mesh: cord, foot: new V3(0, 0.108, 0.006), len: 0.55, last: new V3(1e9, 0, 0), lastTo: new V3() };
+      o.userData.grip = { p: [0.03, -0.07, 0.008], r: [0, Math.PI / 2, 0] }; o.userData.curl = 0.72;
+      o.userData.dispose = () => cord.geometry.dispose();
+      cordUpdate(o);
+      return o;
+    },
     phone_cracked: () => { const o = P.phone(); o.name = 'prop:phone_cracked'; const c = new THREE.Mesh(geo('crack', () => { const g = new THREE.PlaneGeometry(0.068, 0.146); g.userData.shared = true; return g; }), crackMat()); c.position.z = 0.0047; o.add(c); return o; },
     torch: () => { const o = mk('torch', geo('torch', () => PB().cyl(0.017, 0.017, 0.16, '#222428', [0, 0, 0], [Math.PI / 2, 0, 0], 12, 0.4, 0.6).cyl(0.024, 0.018, 0.04, '#2a2c30', [0, 0, 0.09], [Math.PI / 2, 0, 0], 12, 0.35, 0.7).done())); const l = new THREE.Mesh(geo('lens', () => { const g = new THREE.CircleGeometry(0.02, 12); g.userData.shared = true; return g; }), screenMat('lamp')); l.position.z = 0.111; o.add(l); o.userData.grip = { p: [0.02, -0.07, 0.01], r: [0, 0, 0] }; o.userData.curl = 0.85; o.userData.lamp = l; return o; },
     tyre_iron: () => { const o = mk('tyre_iron', geo('tyre', () => PB().cyl(0.009, 0.009, 0.42, '#3a3c3e', [0, 0, 0.12], [Math.PI / 2, 0, 0], 8, 0.5, 0.8).cyl(0.012, 0.009, 0.1, '#3a3c3e', [0, -0.05, 0.33], null, 8, 0.5, 0.8).done())); o.userData.grip = { p: [0.02, -0.07, 0], r: [0.6, 0, 0] }; o.userData.curl = 0.9; return o; },
-    revolver: () => { const o = mk('revolver', geo('rev', () => PB().box(0.028, 0.03, 0.11, '#2a2b2e', [0, 0.01, 0.06], null, 0.35, 0.85).cyl(0.017, 0.017, 0.04, '#2f3033', [0, 0.004, 0.02], [Math.PI / 2, 0, 0], 8, 0.35, 0.85).cyl(0.007, 0.007, 0.12, '#222', [0, 0.018, 0.13], [Math.PI / 2, 0, 0], 8, 0.3, 0.9).rbox(0.026, 0.09, 0.038, 0.008, '#5a3a22', [0, -0.04, -0.01], [0.25, 0, 0], 0.6, 0).done())); o.userData.grip = { p: [0.02, -0.06, 0.0], r: [-Math.PI / 2 + 0.25, 0, 0] }; o.userData.curl = 0.95; o.userData.muzzle = [0, 0.018, 0.19]; return o; },
-    pistol: () => { const o = mk('pistol', geo('pistol', () => PB().box(0.028, 0.032, 0.17, '#1c1d20', [0, 0.02, 0.05], null, 0.4, 0.6).rbox(0.026, 0.1, 0.036, 0.006, '#141416', [0, -0.035, -0.01], [0.3, 0, 0], 0.7, 0.1).done())); o.userData.grip = { p: [0.02, -0.06, 0], r: [-Math.PI / 2 + 0.3, 0, 0] }; o.userData.curl = 0.95; o.userData.muzzle = [0, 0.02, 0.14]; return o; },
-    shotgun: () => { const o = mk('shotgun', geo('sg', () => PB().cyl(0.011, 0.011, 0.36, '#2a2b2e', [0.01, 0.02, 0.24], [Math.PI / 2, 0, 0], 8, 0.35, 0.85).cyl(0.011, 0.011, 0.36, '#2a2b2e', [-0.01, 0.02, 0.24], [Math.PI / 2, 0, 0], 8, 0.35, 0.85).box(0.04, 0.045, 0.16, '#5a3a22', [0, 0.01, 0.06], null, 0.6, 0).rbox(0.035, 0.1, 0.05, 0.01, '#5a3a22', [0, -0.03, -0.05], [0.5, 0, 0], 0.6, 0).done())); o.userData.grip = { p: [0.02, -0.06, 0], r: [-Math.PI / 2 + 0.4, 0, 0] }; o.userData.curl = 0.95; o.userData.off = [0, 0.0, 0.26]; o.userData.muzzle = [0, 0.02, 0.43]; return o; },
-    rifle: () => { const o = mk('rifle', geo('rifle', () => PB().cyl(0.009, 0.01, 0.55, '#232427', [0, 0.025, 0.36], [Math.PI / 2, 0, 0], 8, 0.35, 0.85).box(0.04, 0.05, 0.36, '#6a4526', [0, 0.005, 0.12], null, 0.55, 0).box(0.036, 0.07, 0.28, '#6a4526', [0, -0.01, -0.2], [0.12, 0, 0], 0.55, 0).cyl(0.016, 0.016, 0.22, '#1c1c1e', [0, 0.07, 0.12], [Math.PI / 2, 0, 0], 10, 0.3, 0.8).done())); o.userData.grip = { p: [0.02, -0.06, 0], r: [-Math.PI / 2 + 0.3, 0, 0] }; o.userData.curl = 0.95; o.userData.off = [0, -0.01, 0.34]; o.userData.muzzle = [0, 0.025, 0.64]; return o; },
+    revolver: () => { const o = mk('revolver', geo('rev', () => PB().box(0.028, 0.03, 0.11, '#2a2b2e', [0, 0.01, 0.06], null, 0.35, 0.85).cyl(0.017, 0.017, 0.04, '#2f3033', [0, 0.004, 0.02], [Math.PI / 2, 0, 0], 8, 0.35, 0.85).cyl(0.007, 0.007, 0.12, '#222', [0, 0.018, 0.13], [Math.PI / 2, 0, 0], 8, 0.3, 0.9).rbox(0.026, 0.09, 0.038, 0.008, '#5a3a22', [0, -0.04, -0.01], [0.25, 0, 0], 0.6, 0).done())); o.userData.grip = { p: [0.02, -0.06, 0.0], r: [Math.PI / 2 - 0.25, 0, 0] }; o.userData.curl = 0.95; o.userData.muzzle = [0, 0.018, 0.19]; return o; },
+    pistol: () => { const o = mk('pistol', geo('pistol', () => PB().box(0.028, 0.032, 0.17, '#1c1d20', [0, 0.02, 0.05], null, 0.4, 0.6).rbox(0.026, 0.1, 0.036, 0.006, '#141416', [0, -0.035, -0.01], [0.3, 0, 0], 0.7, 0.1).done())); o.userData.grip = { p: [0.02, -0.06, 0], r: [Math.PI / 2 - 0.3, 0, 0] }; o.userData.curl = 0.95; o.userData.muzzle = [0, 0.02, 0.14]; return o; },
+    shotgun: () => { const o = mk('shotgun', geo('sg', () => PB().cyl(0.011, 0.011, 0.36, '#2a2b2e', [0.01, 0.02, 0.24], [Math.PI / 2, 0, 0], 8, 0.35, 0.85).cyl(0.011, 0.011, 0.36, '#2a2b2e', [-0.01, 0.02, 0.24], [Math.PI / 2, 0, 0], 8, 0.35, 0.85).box(0.04, 0.045, 0.16, '#5a3a22', [0, 0.01, 0.06], null, 0.6, 0).rbox(0.035, 0.1, 0.05, 0.01, '#5a3a22', [0, -0.03, -0.05], [0.5, 0, 0], 0.6, 0).done())); o.userData.grip = { p: [0.02, -0.06, 0], r: [0.35, 0, 0] }; o.userData.curl = 0.95; o.userData.off = [0, 0.0, 0.26]; o.userData.muzzle = [0, 0.02, 0.43]; return o; },
+    rifle: () => { const o = mk('rifle', geo('rifle', () => PB().cyl(0.009, 0.01, 0.55, '#232427', [0, 0.025, 0.36], [Math.PI / 2, 0, 0], 8, 0.35, 0.85).box(0.04, 0.05, 0.36, '#6a4526', [0, 0.005, 0.12], null, 0.55, 0).box(0.036, 0.07, 0.28, '#6a4526', [0, -0.01, -0.2], [0.12, 0, 0], 0.55, 0).cyl(0.016, 0.016, 0.22, '#1c1c1e', [0, 0.07, 0.12], [Math.PI / 2, 0, 0], 10, 0.3, 0.8).done())); o.userData.grip = { p: [0.02, -0.06, 0], r: [0.35, 0, 0] }; o.userData.curl = 0.95; o.userData.off = [0, -0.01, 0.34]; o.userData.muzzle = [0, 0.025, 0.64]; return o; },
     bat: () => { const o = mk('bat', geo('bat', () => { const b = PB().cyl(0.016, 0.016, 0.28, '#3a3a3a', [0, 0, 0.08], [Math.PI / 2, 0, 0], 8, 0.8, 0).box(0.1, 0.03, 0.5, '#d8c28e', [0, 0, 0.47], null, 0.7, 0); for (let i = 0; i < 9; i++) b.cyl(0.006, 0.006, 0.12, i % 2 ? '#e9e6dc' : '#1a1a1a', [0.0, 0.018, 0.3 + i * 0.05], [0, 0, Math.PI / 2], 6, 0.6, 0); return b.done(); })); o.userData.grip = { p: [0.02, -0.07, 0], r: [0.9, 0, 0] }; o.userData.curl = 0.95; return o; },
     box_cutter: () => { const o = mk('box_cutter', geo('bc', () => PB().rbox(0.018, 0.012, 0.13, 0.004, '#f2c200', [0, 0, 0.02], null, 0.5, 0).box(0.012, 0.004, 0.03, '#c9ccd0', [0, 0, 0.1], null, 0.2, 0.9).done())); o.userData.grip = { p: [0.02, -0.065, 0], r: [0, 0, 0] }; o.userData.curl = 0.9; return o; },
     knife: () => { const o = mk('knife', geo('knife', () => PB().rbox(0.02, 0.022, 0.1, 0.005, '#1a1a1a', [0, 0, 0], null, 0.6, 0).box(0.004, 0.024, 0.14, '#b8bcc0', [0, 0.004, 0.12], null, 0.2, 0.9).done())); o.userData.grip = { p: [0.02, -0.065, 0], r: [0, 0, 0] }; o.userData.curl = 0.95; return o; },
@@ -117,7 +130,7 @@ const CharProps = (() => {
     flowers: () => { const o = mk('flowers', geo('flw', () => { const b = PB().cyl(0.012, 0.008, 0.2, '#4f7a34', [0, 0, 0.05], [Math.PI / 2 - 0.3, 0, 0], 6, 0.8, 0); const cs = ['#f2d24b', '#e8e8f0', '#c85aa8', '#f2d24b', '#8fa0e8', '#f09a3a']; for (let i = 0; i < 9; i++) b.sph(0.017, cs[i % cs.length], [(i % 3 - 1) * 0.022, 0.05 + Math.floor(i / 3) * 0.012, 0.15 + (i % 2) * 0.02], [1, 0.6, 1], 0.8, 0); return b.done(); })); o.userData.grip = { p: [0.02, -0.07, 0], r: [-0.6, 0, 0] }; o.userData.curl = 0.9; return o; },
     digital_pet: () => { const o = mk('digital_pet', geo('pet', () => PB().sph(0.028, '#8fd1c4', [0, 0, 0], [1, 1.2, 0.55], 0.4, 0).cyl(0.004, 0.004, 0.012, '#f25a8a', [0, -0.02, 0.015], [Math.PI / 2, 0, 0], 6, 0.5, 0).done())); screen(o, 0.022, 0.018, [0, 0.006, 0.0155]); o.userData.grip = { p: [0.025, -0.075, 0.01], r: [0, Math.PI / 2, 0] }; o.userData.curl = 0.55; return o; },
     clipboard: () => { const o = mk('clipboard', geo('clip', () => PB().box(0.006, 0.32, 0.23, '#9a7a4a', [0, 0, 0], null, 0.7, 0).box(0.007, 0.28, 0.21, '#f2eee4', [0.001, -0.01, 0], null, 0.9, 0).box(0.012, 0.03, 0.08, '#c0c4c8', [0.002, 0.15, 0], null, 0.3, 0.9).done())); o.userData.grip = { p: [0.015, -0.07, 0.08], r: [0, 0, 0] }; o.userData.curl = 0.5; return o; },
-    megaphone: () => { const o = mk('megaphone', geo('mega', () => PB().cyl(0.03, 0.1, 0.28, '#e8e4d8', [0, 0.05, 0.14], [Math.PI / 2, 0, 0], 14, 0.5, 0).cyl(0.03, 0.03, 0.06, '#c83a2a', [0, 0.05, 0.0], [Math.PI / 2, 0, 0], 12, 0.5, 0).box(0.025, 0.09, 0.03, '#2a2a2a', [0, -0.01, 0.02], null, 0.6, 0).done())); o.userData.grip = { p: [0.02, -0.065, 0], r: [-Math.PI / 2 + 0.2, 0, 0] }; o.userData.curl = 0.95; return o; },
+    megaphone: () => { const o = mk('megaphone', geo('mega', () => PB().cyl(0.03, 0.1, 0.28, '#e8e4d8', [0, 0.05, 0.14], [Math.PI / 2, 0, 0], 14, 0.5, 0).cyl(0.03, 0.03, 0.06, '#c83a2a', [0, 0.05, 0.0], [Math.PI / 2, 0, 0], 12, 0.5, 0).box(0.025, 0.09, 0.03, '#2a2a2a', [0, -0.01, 0.02], null, 0.6, 0).done())); o.userData.grip = { p: [0.02, -0.065, 0], r: [Math.PI / 2 - 0.2, 0, 0] }; o.userData.curl = 0.95; return o; },
     axe: () => { const o = mk('axe', geo('axe', () => PB().cyl(0.016, 0.018, 0.85, '#c8452e', [0, 0, 0.3], [Math.PI / 2, 0, 0], 8, 0.5, 0).box(0.012, 0.13, 0.12, '#8a8e92', [0, 0.05, 0.7], null, 0.35, 0.8).box(0.014, 0.05, 0.06, '#8a8e92', [0, -0.05, 0.7], null, 0.35, 0.8).done())); o.userData.grip = { p: [0.02, -0.07, 0], r: [0.9, 0, 0] }; o.userData.curl = 0.95; return o; },
     scanner: () => {
       const o = mk('scanner', geo('scan', () => PB().box(0.045, 0.05, 0.16, '#d8d4c4', [0, 0.02, 0.05], null, 0.5, 0).rbox(0.035, 0.1, 0.04, 0.008, '#2a2a2a', [0, -0.04, -0.01], [0.3, 0, 0], 0.6, 0).cyl(0.02, 0.018, 0.02, '#1a1a1a', [0, 0.02, 0.14], [Math.PI / 2, 0, 0], 12, 0.3, 0).done()));
@@ -128,13 +141,13 @@ const CharProps = (() => {
       o.userData.setText = (txt, red) => { const g = cv.getContext('2d'); g.fillStyle = red ? '#3a0606' : '#06200e'; g.fillRect(0, 0, 128, 64); g.fillStyle = red ? '#ff5040' : '#7dff9a'; g.font = 'bold 26px monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, 64, 34); tx.needsUpdate = true; };
       o.userData.setText('READY');
       o.userData.disposeMat = m;
-      o.userData.grip = { p: [0.02, -0.06, 0], r: [-Math.PI / 2 + 0.3, 0, 0] }; o.userData.curl = 0.95; return o;
+      o.userData.grip = { p: [0.02, -0.06, 0], r: [Math.PI / 2 - 0.3, 0, 0] }; o.userData.curl = 0.95; return o;
     },
     radio: () => { const o = mk('radio', geo('radio', () => PB().rbox(0.035, 0.13, 0.06, 0.006, '#1e2022', [0, 0, 0], null, 0.6, 0.1).cyl(0.005, 0.004, 0.09, '#111', [0.0, 0.1, -0.015], null, 6, 0.5, 0).box(0.036, 0.03, 0.04, '#3a3d40', [0, 0.02, 0], null, 0.4, 0.3).done())); o.userData.grip = { p: [0.025, -0.075, 0.01], r: [0, 0, 0] }; o.userData.curl = 0.8; return o; },
     counter: () => { const o = mk('counter', geo('ctr', () => PB().cyl(0.022, 0.022, 0.016, '#c9ccd0', [0, 0, 0], [0, 0, Math.PI / 2], 14, 0.3, 0.85).box(0.006, 0.012, 0.012, '#e8e8e8', [0, 0.016, 0.018], null, 0.3, 0.6).done())); o.userData.grip = { p: [0.025, -0.07, 0.01], r: [0, 0, 0] }; o.userData.curl = 0.85; return o; },
     hammer: () => { const o = mk('hammer', geo('ham', () => PB().cyl(0.013, 0.015, 0.3, '#8a5a32', [0, 0, 0.08], [Math.PI / 2, 0, 0], 8, 0.6, 0).box(0.03, 0.03, 0.11, '#4a4c50', [0, 0, 0.23], [0, Math.PI / 2, 0], 0.4, 0.8).done())); o.userData.grip = { p: [0.02, -0.07, 0], r: [0.7, 0, 0] }; o.userData.curl = 0.95; return o; },
     slingshot: () => { const o = mk('slingshot', geo('sling', () => PB().cyl(0.008, 0.009, 0.1, '#6a4a2a', [0, 0, 0], [Math.PI / 2, 0, 0], 6, 0.7, 0).cyl(0.006, 0.006, 0.07, '#6a4a2a', [0, 0.025, 0.07], [Math.PI / 2 - 0.5, 0, 0], 6, 0.7, 0).cyl(0.006, 0.006, 0.07, '#6a4a2a', [0, -0.025, 0.07], [Math.PI / 2 + 0.5, 0, 0], 6, 0.7, 0).done())); o.userData.grip = { p: [0.02, -0.07, 0], r: [0, 0, 0] }; o.userData.curl = 0.95; return o; },
-    flare_gun: () => { const o = mk('flare_gun', geo('flare', () => PB().cyl(0.018, 0.018, 0.14, '#e05a1a', [0, 0.02, 0.06], [Math.PI / 2, 0, 0], 10, 0.5, 0).rbox(0.026, 0.09, 0.034, 0.008, '#e05a1a', [0, -0.03, -0.01], [0.3, 0, 0], 0.5, 0).done())); o.userData.grip = { p: [0.02, -0.06, 0], r: [-Math.PI / 2 + 0.3, 0, 0] }; o.userData.curl = 0.95; o.userData.muzzle = [0, 0.02, 0.14]; return o; },
+    flare_gun: () => { const o = mk('flare_gun', geo('flare', () => PB().cyl(0.018, 0.018, 0.14, '#e05a1a', [0, 0.02, 0.06], [Math.PI / 2, 0, 0], 10, 0.5, 0).rbox(0.026, 0.09, 0.034, 0.008, '#e05a1a', [0, -0.03, -0.01], [0.3, 0, 0], 0.5, 0).done())); o.userData.grip = { p: [0.02, -0.06, 0], r: [Math.PI / 2 - 0.3, 0, 0] }; o.userData.curl = 0.95; o.userData.muzzle = [0, 0.02, 0.14]; return o; },
     syringe: () => { const o = mk('syringe', geo('syr', () => PB().cyl(0.006, 0.006, 0.08, '#e8eef2', [0, 0, 0.02], [Math.PI / 2, 0, 0], 8, 0.2, 0).cyl(0.001, 0.001, 0.03, '#c0c0c0', [0, 0, 0.075], [Math.PI / 2, 0, 0], 4, 0.2, 0.9).done())); o.userData.grip = { p: [0.02, -0.065, 0.01], r: [0, 0, 0] }; o.userData.curl = 0.7; return o; },
     scalpel: () => { const o = mk('scalpel', geo('scal', () => PB().box(0.008, 0.006, 0.12, '#c8ccd0', [0, 0, 0.02], null, 0.2, 0.9).box(0.003, 0.01, 0.025, '#e0e4e8', [0, 0, 0.09], null, 0.1, 1).done())); o.userData.grip = { p: [0.02, -0.065, 0.01], r: [0, 0, 0] }; o.userData.curl = 0.75; return o; },
     rag: () => { const o = mk('rag', geo('rag', () => PB().sph(0.04, '#b8b0a0', [0, 0, 0], [0.8, 1.2, 1], 0.95, 0).done())); o.userData.grip = { p: [0.025, -0.08, 0], r: [0, 0, 0] }; o.userData.curl = 0.8; return o; },
@@ -158,6 +171,28 @@ const CharProps = (() => {
     return crackM;
   }
 
+  // the handset's coiled cord: a helix wound round a sagging curve from the handset's foot to its end (world space, in the
+  // handset's frame), rebuilt only when either end moves
+  const _ca = new V3(), _cb = new V3(), _cm = new THREE.Matrix4();
+  function cordUpdate(o) {
+    const C = o.userData.cord; o.updateWorldMatrix(true, false);
+    o.localToWorld(_ca.copy(C.foot));
+    const to = o.userData.cordTo;
+    if (to) (to.isVector3 ? _cb.copy(to) : to.getWorldPosition(_cb)); else _cb.copy(_ca).add(new V3(0, -C.len, 0.05));
+    if (_ca.distanceToSquared(C.last) < 1e-6 && _cb.distanceToSquared(C.lastTo) < 1e-6) return;
+    C.last.copy(_ca); C.lastTo.copy(_cb);
+    const L = _ca.distanceTo(_cb), sag = Math.max(0.04, (C.len - L) * 0.6 + 0.04), n = 110, coils = 14 + L * 30, pts = [];
+    const dir = _cb.clone().sub(_ca).normalize(), u = Math.abs(dir.y) > 0.9 ? new V3(1, 0, 0) : new V3(0, 1, 0).cross(dir).normalize(), w = new V3().crossVectors(dir, u);
+    _cm.copy(o.matrixWorld).invert();
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, a = t * coils * Math.PI * 2, r = 0.0085 * Math.min(1, t * 12, (1 - t) * 12);
+      pts.push(new V3().lerpVectors(_ca, _cb, t).add(new V3(0, -Math.sin(t * Math.PI) * sag, 0)).addScaledVector(u, Math.cos(a) * r).addScaledVector(w, Math.sin(a) * r).applyMatrix4(_cm));
+    }
+    const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), n * 3, 0.0026, 4, false), cnt = g.attributes.position.count, col = new Float32Array(cnt * 3).fill(0.1);
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setAttribute('rough', new THREE.BufferAttribute(new Float32Array(cnt).fill(0.6), 1)); g.setAttribute('metal', new THREE.BufferAttribute(new Float32Array(cnt), 1));
+    C.mesh.geometry.dispose(); C.mesh.geometry = g;
+  }
+
   // ---------------------------------------------------------------------------------------------
   function hold(c, prop, hand = 'r', o = {}) {
     const h = hand === 'l' ? 'l' : 'r';
@@ -165,8 +200,8 @@ const CharProps = (() => {
     const obj = typeof prop === 'string' ? (P[prop] ? P[prop]() : null) : prop;
     if (!obj) return null;
     const gr = obj.userData.grip || { p: [0.02, -0.07, 0], r: [0, 0, 0] }, sd = h === 'l' ? -1 : 1, s = c.D.s;
-    const bone = c.bones[h === 'l' ? 'handL' : 'handR'];
-    obj.position.set(gr.p[0] * sd * s, gr.p[1] * s, gr.p[2] * s);
+    const bone = c.bones[h === 'l' ? 'handL' : 'handR'], power = (obj.userData.curl ?? 0.8) >= 0.8;   // power grips sit across the finger roots
+    obj.position.set((gr.p[0] + (power ? 0.009 : 0)) * sd * s, (gr.p[1] - (power ? 0.022 : 0)) * s, gr.p[2] * s);
     obj.rotation.set(gr.r[0], gr.r[1] * sd, gr.r[2] * sd);
     bone.add(obj);
     c.heldP[h] = obj;
@@ -184,7 +219,7 @@ const CharProps = (() => {
     c.heldP[h] = null; c.grip[h] = null;
     if (h === 'r') c.twoHand = null;
     if (c.glow && c.glow.phone === obj) phoneGlow(c, false);
-    if (o.remove) { obj.parent && obj.parent.remove(obj); if (obj.userData.light) obj.userData.light.dispose(); if (obj.userData.disposeMat) { obj.userData.disposeMat.map.dispose(); obj.userData.disposeMat.dispose(); } return obj; }
+    if (o.remove) { obj.parent && obj.parent.remove(obj); if (obj.userData.light) obj.userData.light.dispose(); if (obj.userData.disposeMat) { obj.userData.disposeMat.map.dispose(); obj.userData.disposeMat.dispose(); } if (obj.userData.dispose) obj.userData.dispose(); return obj; }
     // leave it in the world, falling to the ground
     obj.updateWorldMatrix(true, false);
     const area = Game.area;
@@ -283,12 +318,14 @@ const CharProps = (() => {
   // ---- per frame ------------------------------------------------------------------------------------------
   let lastFeed = -1;
   function update(c, dt) {
+    for (const h of ['r', 'l']) { const p = c.heldP[h]; if (p && p.userData.cord) cordUpdate(p); }
     // hand grip curl for held props
     for (const h of ['r', 'l']) {
       const g = c.grip[h]; if (g == null) continue;
       const S = h === 'l' ? 'L' : 'R', sd = h === 'l' ? 1 : -1;
-      c.bones['fingers' + S].rotation.z = -sd * g * 1.1; c.bones['fingers2' + S].rotation.z = -sd * g * 1.0;
-      if (!(c.poseName === 'phone' && h === 'r')) c.bones['thumb' + S].rotation.z = -sd * g * 0.6;
+      const k = g >= 0.8 ? 1.55 : 1.2;                                         // power grips close into a fist
+      c.bones['fingers' + S].rotation.z = -sd * g * k; c.bones['fingers2' + S].rotation.z = -sd * g * k * 1.05;
+      if (!(c.poseName === 'phone' && h === 'r')) { const t = c.bones['thumb' + S].rotation; t.x = g * 0.55; t.z = -sd * g * 0.75; c.bones['thumb2' + S].rotation.z = -sd * g * 0.6; }   // the thumb wraps over
     }
     // phone thumb swipe while in the phone pose
     if (c.poseName === 'phone' && c.heldP.r) { const k = (Math.sin(c.t * (c.infected ? 11 : 6.5)) + 1) * 0.5; c.bones.thumbR.rotation.z = 0.2 + k * 0.5; c.bones.thumb2R.rotation.z = k * 0.4; }

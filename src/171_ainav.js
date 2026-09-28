@@ -1,13 +1,13 @@
 // ============================================================================
 // AINav — the AI navigation grid (internal to AI; systems agent). Built from World boxes the first time an area needs it,
 // cached per area and dropped when the area unloads. Ground-floor walkable heights and blocked cells are rasterised at
-// 0.3 m with the agent radius (0.2 m) baked in; 8-connected A* on a binary heap; string-pulled paths; cover spots along
+// 0.3 m with the agent radius (0.2 m) baked in; 8-connected weighted A* on a binary heap; string-pulled paths; cover spots along
 // low walls and tall blockers.
 //   AINav.get(A) -> grid (A = area context; bounds from A.navBox or the area's boxes) · AINav.drop(areaId)
 //   grid.path(from, to) -> [Vector3] | null     smoothed waypoints (the first is the next corner, the last is `to`, snapped)
 //   grid.free(p) · grid.snap(p, out) -> Vector3 | null (nearest free cell) · grid.clear(a, b) (straight walk possible)
 //   grid.narrow(p) -> bool (a doorway / gap under 1.2 m wide) · grid.random(around, r, rng) -> Vector3 | null
-//   grid.cover -> [{ pos, dir (unit XZ, toward the blocker), low (blocker 0.85–1.5 m: crouch cover) }]
+//   grid.cover -> [{ pos, dir (unit XZ, toward the blocker), low (blocker 0.75–1.5 m: crouch cover) }]
 // ============================================================================
 const AINav = (() => {
   const V3 = THREE.Vector3;
@@ -54,7 +54,7 @@ const AINav = (() => {
     const DX = [1, -1, 0, 0, 1, 1, -1, -1], DZ = [0, 0, 1, -1, 1, -1, 1, -1];
     function astar(s, t) {
       stamp++; hn = 0;
-      const ti = t % W, tj = (t / W) | 0, heu = k => { const dx = Math.abs(k % W - ti), dz = Math.abs(((k / W) | 0) - tj); return dx + dz - 0.586 * Math.min(dx, dz); };
+      const ti = t % W, tj = (t / W) | 0, heu = k => { const dx = Math.abs(k % W - ti), dz = Math.abs(((k / W) | 0) - tj); return (dx + dz - 0.586 * Math.min(dx, dz)) * 1.15; };
       gs[s] = 0; f[s] = heu(s); seen[s] = stamp; from[s] = -1; push(s);
       let n = 0;
       while (hn) {
@@ -89,15 +89,17 @@ const AINav = (() => {
       }
       return best;
     }
-    // straight walk between two points: every sample free and no ledge between samples
+    // straight walk between two points: every sample free and no ledge between samples (a start hugging a wall may begin
+    // up to 0.5 m inside the inflated blocker)
     function clear(a, b) {
       const d = Math.hypot(b.x - a.x, b.z - a.z), n = Math.max(1, Math.ceil(d / (CS * 0.5)));
-      let prev = idx(a.x, a.z); if (!ok(prev)) return false;
-      for (let s = 1; s <= n; s++) {
+      let prev = -1;
+      for (let s = 0; s <= n; s++) {
         const k = idx(a.x + (b.x - a.x) * s / n, a.z + (b.z - a.z) * s / n);
-        if (k !== prev) { if (!step(prev, k)) return false; prev = k; }
+        if (prev < 0) { if (ok(k)) prev = k; else if (s * d / n > 0.5) return false; }
+        else if (k !== prev) { if (!step(prev, k)) return false; prev = k; }
       }
-      return true;
+      return prev >= 0;
     }
     g.free = p => ok(idx(p.x, p.z));
     g.snap = (p, out = new V3()) => { const k = snapK(p); return k < 0 ? null : pos(k, out); };
@@ -111,8 +113,8 @@ const AINav = (() => {
       let i = 0; const start = U.v3(a).clone();
       let cur = start;
       while (i < pts.length - 1) {
-        let j = pts.length - 1;
-        while (j > i + 1 && !clear(cur, pts[j])) j--;
+        let j = i + 1;
+        while (j + 1 < pts.length && clear(cur, pts[j + 1])) j++;
         out.push(pts[j]); cur = pts[j]; i = j;
       }
       if (!out.length) out.push(pts[0]);
@@ -132,7 +134,7 @@ const AINav = (() => {
       return null;
     };
 
-    // ---- cover spots: free cells 0.3–0.6 m from a blocker at least 0.85 m tall --------------------------------
+    // ---- cover spots: free cells 0.3–0.6 m from a blocker at least 0.75 m tall --------------------------------
     const taken = new Set(), key = (x, z) => Math.floor(x / 1.4) + ',' + Math.floor(z / 1.4);
     const addCover = (k, di, dj, t) => {
       const p = pos(k), kk = key(p.x, p.z); if (taken.has(kk)) return;
@@ -142,7 +144,7 @@ const AINav = (() => {
       const k = j * W + i; if (blk[k]) continue;
       for (let d = 0; d < 4; d++) for (let s = 1; s <= 2; s++) {
         const nk = (j + DZ[d] * s) * W + i + DX[d] * s;
-        if (blk[nk] && top[nk] >= 0.85) { addCover(k, DX[d], DZ[d], top[nk]); d = 4; break; }
+        if (blk[nk] && top[nk] >= 0.75) { addCover(k, DX[d], DZ[d], top[nk]); d = 4; break; }
         if (blk[nk]) break;
       }
     }

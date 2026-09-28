@@ -50,7 +50,7 @@ const CharHead = (() => {
       ex: (h.ipd ?? (0.0625 - fem * 0.002)) / 2, mw: (h.mouthW ?? (0.025 - fem * 0.001)) / 0.025,
       mY: -0.0745 + fem * 0.003 + (h.mouthUp || 0),
     };
-    P.nl = 0.047 * (0.8 + 0.2 * P.nose) * (1 - fem * 0.07) * (1 - kid * 0.12);              // nasion -> tip drop
+    P.nl = 0.0445 * (0.8 + 0.2 * P.nose) * (1 - fem * 0.07) * (1 - kid * 0.12);             // nasion -> tip drop
     P.tipY = 0.004 - P.nl; P.tipZ = 0.103 + 0.013 * (P.nose - 1) - fem * 0.003 - kid * 0.005;
     P.chinY = -0.103 + kid * 0.004;
     P.lf = 1 - kid * 0.1 - fem * 0.04;
@@ -65,8 +65,10 @@ const CharHead = (() => {
   // the running distance plus the blend radius, the primitive cannot change the result and is skipped.
   function sdfOf(look, neckR = 0.05, X = NOX) {
     const P = params(look), { wid, cr, jaw, chin, brow, cheek, lips, noseW, bump, full, hollow, ex, mw, tipZ } = P, { mY, tipY, chinY } = P.S;
-    const jx = 0.041 * jaw * wid, lf = P.lf, { smile, frown, pucker, wide, fur } = X, raise = X.brow;
+    const jx = 0.0385 * jaw * wid, lf = P.lf, jk = 0.012 + 0.006 * (P.fem + P.kid + full), { smile, frown, pucker, wide, fur } = X, raise = X.brow;
     const fn = 1 - P.fem * 0.05;                                        // women's faces taper below the cheekbones
+    const soft = Math.max(P.kid * clamp((17 - P.age) / 8, 0.35, 1), P.fem * clamp((45 - P.age) / 25, 0, 1));   // children and young women: rounder, smoother cheeks
+    const old = clamp((P.age - 55) / 25, 0, 1), kz = P.kid * 0.003 + old * 0.003;   // the mouth sits back on a child's (and an old) face
     const lw = mw * (1 + wide * 0.12 - pucker * 0.24 + smile * 0.06), cw = 1 / (0.023 * mw);
     const L = [];
     const E = (k, cx, cy, cz, rx, ry, rz, sub) => L.push({ t: 0, k, sub, cx, cy, cz, ix: 1 / rx, iy: 1 / ry, iz: 1 / rz, x0: cx - rx, x1: cx + rx, y0: cy - ry, y1: cy + ry, z0: cz - rz, z1: cz + rz });
@@ -75,52 +77,56 @@ const CharHead = (() => {
     E(0, 0, 0.027, -0.013, 0.0745 * wid, 0.092 * cr, 0.1 * cr);                                        // cranium
     E(0.015, 0, -0.01, -0.02, 0.068 * wid, 0.055, 0.08);                                                // temporal / parietal sides
     E(0.02, 0, -0.026, 0.004, 0.064 * wid * (1 - P.fem * 0.03), 0.056, 0.078);                                               // midface
-    E(0.02, 0, -0.07, 0.014, 0.05 * jaw * wid, 0.032, 0.066);                                           // lower face
-    Cp(0.015, 0.052 * wid * fn, -0.035, -0.016, jx, -0.086, -0.024, 0.011, 0.01);                            // ramus
-    Cp(0.016, jx, -0.086, -0.024, 0.016 * chin, chinY - 0.003, 0.06, 0.01, 0.01);                       // mandible
-    E(0.016, 0, chinY + frown * 0.003, 0.066 + P.kid * 0.002 + frown * 0.002, 0.019 * chin, 0.017, 0.019); // chin
-    E(0.024, 0, -0.07, 0.036 - P.kid * 0.004, 0.037 * mw, 0.03, 0.048);                                // dental arch
-    E(0.02, 0.041 * wid * fn, -0.058, -0.002, 0.016 * (1 - P.fem * 0.25), 0.03, 0.032);                                           // masseters
+    E(0.02, 0, -0.07, 0.014, 0.046 * jaw * wid, 0.032, 0.066);                                          // lower face
+    Cp(jk, 0.052 * wid * fn, -0.035, -0.016, jx, -0.086, -0.024, 0.0105, 0.0095);                            // ramus
+    Cp(jk, jx, -0.086, -0.024, 0.016 * chin, chinY - 0.003, 0.06, 0.0095, 0.01);                       // mandible
+    E(0.021, 0, chinY + 0.001 + frown * 0.003, 0.065 + P.kid * 0.004 + old * 0.002 + frown * 0.002, (0.0175 + 0.0035 * (1 - P.fem) * (1 - P.kid)) * chin, 0.017, 0.0185); // chin
+    E(0.024, 0, -0.07, 0.034 - P.kid * 0.005 - old * 0.004, 0.037 * mw, 0.03, 0.047);                  // dental arch
+    E(0.02, 0.038 * wid * fn, -0.058, -0.002, 0.0145 * (1 - P.fem * 0.25), 0.03, 0.032);                                           // masseters
     const jf = Math.min(1, 0.55 + 0.45 * jaw);
-    E(0.022, 0.034 * jf * fn * (1 - hollow * 0.12), -0.043, 0.018, 0.026 * (1 - hollow * 0.3) * (1 - P.fem * 0.1), 0.042, 0.042); // cheeks (buccal fill; hollow cheeks lose it)
-    E(0.024, 0.048, -0.017, 0.04, 0.019, 0.014, 0.019 * cheek);                                         // cheekbones
-    E(0.014, 0.032, -0.036 + smile * 0.007, 0.058 + smile * 0.003, 0.019 * (1 + smile * 0.12), 0.018, 0.017 * (1 + smile * 0.25)); // malar fat
-    E(0.018, (0.026 + 0.014 * full - 0.008 * hollow) * jf, -0.056, 0.03, 0.024, 0.024, 0.028);           // cheek fullness
+    E(0.022 + 0.012 * soft, 0.033 * jf * fn * (1 - hollow * 0.12), -0.043, 0.018, 0.026 * (1 - hollow * 0.3) * (1 - P.fem * 0.1) * (1 + 0.1 * P.kid), 0.042, 0.042); // cheeks (buccal fill; hollow cheeks lose it)
+    E(0.024 + 0.01 * soft, 0.048, -0.017, 0.04, 0.019, 0.014, 0.019 * cheek * (1 - 0.2 * soft));        // cheekbones
+    E(0.014 + 0.012 * soft, 0.032, -0.036 + smile * 0.007, 0.058 + smile * 0.003, 0.019 * (1 + smile * 0.12 + 0.15 * soft), 0.018 * (1 + 0.15 * soft), 0.017 * (1 + smile * 0.25)); // malar fat
+    E(0.018 + 0.01 * soft, (0.026 + 0.014 * full - 0.008 * hollow) * jf, -0.056, 0.03, 0.024, 0.024, 0.028);   // cheek fullness
     E(0.02, 0.083, 0.03, 0.03, 0.008, 0.018, 0.02, true);                                               // temples
     E(0.02, 0.029 - fur * 0.003, 0.016 + raise * 0.0045 - fur * 0.0028, 0.068 + fur * 0.0015, 0.024, 0.011, 0.014 * (0.6 + 0.4 * brow)); // brow ridge
     E(0.01, 0, 0.014 - fur * 0.002, 0.079 + fur * 0.0022, 0.014, 0.012, 0.009);                         // glabella
-    E(0.013, ex * 1.02, 0.002 + raise * 0.0015, 0.091, 0.0155, 0.011, 0.012, true);                     // eye socket
+    E(0.013, ex * 1.02, 0.002 + raise * 0.0015, 0.091, 0.0155, 0.011, 0.012 * (1 - 0.3 * soft), true);  // eye socket
     G(0.008, ex - 0.0145, ex + 0.0145, -0.015, 0.014, 0.049, 0.079, (ax, y, z, d) => smin(d, Math.hypot(ax - ex, y + 0.0005, z - 0.064) - 0.0145, 0.008)); // eyeball
-    G(0.009, 0, 0.022, tipY - 0.012, 0.013, 0.07, tipZ + 0.012, (ax, y, z, d) => {                                      // nose
-      let n = cap(ax, y, z, 0, 0.006, 0.077, 0, tipY + 0.008, tipZ - 0.004, 0.0056 * noseW, 0.0078 * noseW);
-      n = smin(n, ell(ax, y, z, 0, tipY + 0.003, tipZ - 0.001, 0.0102 * noseW, 0.0092, 0.0098), 0.006);
-      n = smin(n, ell(ax, y, z, 0.0112 * noseW, tipY - 0.003, tipZ - 0.0155, 0.0064 * noseW, 0.0056, 0.0088), 0.006);
-      n = smin(n, ell(ax, y, z, 0, tipY - 0.005, tipZ - 0.009, 0.0048, 0.0042, 0.0092), 0.004);
-      if (bump) n = smin(n, ell(ax, y, z, 0, lerp(0.006, tipY, 0.4), lerp(0.077, tipZ, 0.42) + 0.0015, 0.0052, 0.009, 0.0035 + 0.002 * bump), 0.004);
-      return smin(d, n, 0.009);
+    G(0.009, 0, 0.026, tipY - 0.014, 0.014, 0.066, tipZ + 0.012, (ax, y, z, d) => {                                      // nose
+      // a narrow dorsum on a wedge of sidewalls; a lobule of two soft domes; alae set back and down; the columella
+      const my = lerp(0.004, tipY + 0.01, 0.5), mz = lerp(0.08, tipZ - 0.006, 0.5);
+      let n = cap(ax, y, z, 0, 0.004, 0.0795, 0, tipY + 0.01, tipZ - 0.0055, 0.0038 * noseW, 0.0054 * noseW);
+      n = smin(n, ellX(ax, y, z, 0, my, mz - 0.0045, 0.0125 * noseW, 0.027, 0.0095, 0.44), 0.006);
+      n = smin(n, ell(ax, y, z, 0, tipY + 0.001, tipZ - 0.004, 0.0074 * noseW, 0.0072, 0.008), 0.006);
+      n = smin(n, ell(ax, y, z, 0.0112 * noseW, tipY - 0.0035, tipZ - 0.0165, 0.0055 * noseW, 0.0062, 0.0105), 0.011);
+      n = smin(n, ell(ax, y, z, 0, tipY - 0.0055, tipZ - 0.009, 0.0034, 0.0034, 0.008), 0.004);
+      if (bump) n = smin(n, ell(ax, y, z, 0, lerp(0.004, tipY, 0.42), lerp(0.0795, tipZ, 0.42) + 0.0022, 0.0046, 0.009, 0.0032 + 0.002 * bump), 0.004);
+      return smin(d, n, 0.008);
     });
     G(0.008, 0, 0.032, mY - 0.026, mY + 0.014, 0.07, 0.11, (ax, y, z, d) => {                                 // lips (corners bend with the expression)
-      const cq = Math.min(1.6, (ax * cw) ** 2), yl = y - (smile * 0.0045 - frown * 0.0035) * cq, zl = z + (smile * 0.004 + wide * 0.002) * cq - pucker * 0.005 * (1 - cq * 0.4);
-      d = smin(d, ellX(ax, yl, zl, 0, mY + 0.0045, 0.083, 0.0228 * lw, 0.0056 * lips * (1 + pucker * 0.15), 0.0078, 0.5), 0.008);
-      d = smin(d, ell(ax, yl, zl, 0, mY + 0.0026, 0.0866, 0.0065, 0.0028 * lips, 0.005), 0.004);         // tubercle
-      d = smin(d, ellX(ax, yl, zl, 0, mY - 0.0062 + frown * 0.0015, 0.08 + frown * 0.0015, 0.02 * lw, 0.0066 * lips * (1 + pucker * 0.15), 0.0084, -0.35), 0.007);
+      const cq = Math.min(1.6, (ax * cw) ** 2), yl = y - (smile * 0.0045 - frown * 0.0035) * cq, zl = z + 10 * ax * ax + (smile * 0.004 + wide * 0.002) * cq - pucker * 0.005 * (1 - cq * 0.4);   // the lips wrap round the teeth
+      d = smin(d, ellX(ax, yl, zl, 0, mY + 0.0045, 0.0815 - kz, 0.0228 * lw, 0.0059 * lips * (1 + pucker * 0.15), 0.0082, 0.32), 0.008);
+      d = smin(d, ell(ax, yl, zl, 0, mY + 0.0026, 0.085 - kz, 0.0065, 0.0028 * lips, 0.005), 0.004);         // tubercle
+      d = smin(d, ellX(ax, yl, zl, 0, mY - 0.0062 + frown * 0.0015, 0.0785 - kz + frown * 0.0015, 0.02 * lw, 0.0077 * lips * (1 + pucker * 0.15), 0.0094, -0.35), 0.007);
       d = smax(d, -ell(ax, yl, zl, 0, mY, 0.1075, 0.022 * lw, 0.0007, 0.0135), 0.0018);                    // lip line
       return smax(d, -ell(ax, y, z, 0, mY - 0.02, 0.093, 0.02, 0.0045, 0.011), 0.006);                    // mentolabial sulcus
     });
-    if (full > 0.3) E(0.02, 0, chinY - 0.016, 0.042, 0.034 * jaw, 0.022 * full, 0.034);              // a heavy face's double chin
-    Cp(0.03, 0, -0.045, -0.03, 0, -0.22, -0.024, neckR * 0.92, neckR * 1.04);                          // neck (blend narrows toward the jaw)
+    if (full > 0.3 && !P.kid) E(0.026, 0, chinY - 0.014, 0.034, 0.03 * jaw, 0.02 * full, 0.032);              // a heavy face's double chin
+    E(0.03, 0, 0.004, -0.066, 0.058 * wid, 0.05 * cr, 0.05 * cr);                                       // occiput: the skull overhangs the nape
+    Cp(0.03, 0, -0.045, -0.024, 0, -0.22, -0.02, neckR * 0.79, neckR * 0.96);                            // neck (blend narrows toward the jaw)
     L[L.length - 1].neck = true;
-    if (!P.fem && !P.kid) E(0.012, 0, -0.142, -0.03 + neckR - 0.004, 0.009, 0.013, 0.012);              // Adam's apple
+    if (!P.fem && !P.kid) E(0.012, 0, -0.142, -0.03 + neckR * 0.88 - 0.004, 0.009, 0.013, 0.012);       // Adam's apple
     const n = L.length;
     const f = (x, y0, z) => {
-      const ax = x < 0 ? -x : x, y = y0 < -0.035 ? -0.035 + (y0 + 0.035) / lf : y0;           // shorter lower face for children
+      const ax = Math.sqrt(x * x + 4e-6), y = y0 < -0.035 ? -0.035 + (y0 + 0.035) / lf : y0;   // (a smooth |x|: no crease down the midline) shorter lower face for children
       let d = 1;
       for (let i = 0; i < n; i++) {
         const e = L[i];
         if (i) {
           const bx = ax < e.x0 ? e.x0 - ax : ax > e.x1 ? ax - e.x1 : 0, by = y < e.y0 ? e.y0 - y : y > e.y1 ? y - e.y1 : 0, bz = z < e.z0 ? e.z0 - z : z > e.z1 ? z - e.z1 : 0;
           const bd = bx || by || bz ? Math.sqrt(bx * bx + by * by + bz * bz) : 0;
-          if (e.sub ? bd >= e.k - d : bd >= d + e.k) continue;
+          if (e.sub ? bd >= e.k - d + 0.004 : bd >= d + e.k + 0.004) continue;   // (margin: the ellipsoid distance is approximate)
         }
         if (e.t === 2) { d = e.fn(ax, y, z, d); continue; }
         let v;
@@ -129,7 +135,7 @@ const CharHead = (() => {
           const k0 = Math.sqrt(X * X + Y * Y + Z * Z), k1 = Math.sqrt(X * X * e.ix * e.ix + Y * Y * e.iy * e.iy + Z * Z * e.iz * e.iz);
           v = k1 > 1e-9 ? k0 * (k0 - 1) / k1 : -0.01;
         } else { const a = e.a; v = cap(ax, y, z, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]); }
-        d = i === 0 ? v : e.neck ? smin(d, v, lerp(0.03, 0.01, sstep(-0.05, 0.0, z))) : e.sub ? smax(d, -v, e.k) : smin(d, v, e.k);
+        d = i === 0 ? v : e.neck ? smin(d, v, lerp(0.016, 0.01, sstep(-0.05, 0.0, z))) : e.sub ? smax(d, -v, e.k) : smin(d, v, e.k);
       }
       return d;
     };
@@ -191,7 +197,7 @@ const CharHead = (() => {
   // ---- mesh ---------------------------------------------------------------------------------------------------
   function rows(P, lod) {
     const ys = [], k = lod < 1 ? 2.6 : 1;
-    for (let y = HY0; y < HY1; ) { ys.push(y); const fine = y > -0.118 && y < 0.03; y += (fine ? 0.0024 : 0.0055) * (fine ? k * 1.1 : k); }
+    for (let y = HY0; y < HY1; ) { ys.push(y); const fine = y > -0.118 && y < 0.03, base = y > P.tipY - 0.014 && y < P.tipY + 0.003; y += (fine ? 0.0024 : 0.0055) * (fine ? k * 1.1 : k) * (base ? 0.5 : 1); }   // twice as fine under the nose
     ys.push(HY1);
     for (const o of [-0.0024, -0.0005, 0.0005, 0.0024]) {                    // rows on the lip line so the jaw parts the lips cleanly
       const t = P.mY + o; let bi = 0, bd = 9;
@@ -201,12 +207,22 @@ const CharHead = (() => {
     return ys.sort((a, b) => a - b);
   }
   function cols(lod) {
-    const C = lod < 1 ? 35 : 101, out = [];
-    for (let j = 0; j < C; j++) { const t = j / (C - 1) * 2 - 1; out.push(Math.PI * (0.22 * t + 0.78 * Math.pow(Math.abs(t), 5) * Math.sign(t))); }
+    const C = lod < 1 ? 35 : 117, out = [];
+    for (let j = 0; j < C; j++) { const t = j / (C - 1) * 2 - 1; out.push(Math.PI * (lod < 1 ? 0.22 * t + 0.78 * Math.pow(Math.abs(t), 5) * Math.sign(t) : 0.16 * t + 0.84 * Math.pow(Math.abs(t), 4.2) * Math.sign(t))); }
     return out;
   }
 
+  // heroes' heads (sculpt + expression morphs, the costliest part of a character) are kept for the last few looks built,
+  // so the loading screen's preload and the later create share one sculpt
+  const cache = new Map();
   function build(D, look) {
+    const key = CharBody.LOD >= 1 && look.key, hit = key && cache.get(key);
+    if (hit) { cache.delete(key); cache.set(key, hit); return { geo: hit.geo.clone(), layout: hit.layout }; }
+    const res = sculpt(D, look);
+    if (key) { cache.set(key, { geo: res.geo.clone(), layout: res.layout }); if (cache.size > 8) { const [k, v] = cache.entries().next().value; v.geo.dispose(); cache.delete(k); } }
+    return res;
+  }
+  function sculpt(D, look) {
     const CB = CharBody, { BI } = CB, f = D.sdf, P = f.P, hs = D.hs, O = D.headO, lod = CB.LOD;
     const mb = new CB.MB(), ys = rows(P, lod), phis = cols(lod), R = ys.length, C = phis.length;
     const p = new V3(), n = new V3(), q = new V3(), grid = [];
@@ -295,7 +311,7 @@ const CharHead = (() => {
         for (let j = 0; j < phis.length; j++) {
           if (Math.abs(phis[j]) > amax) continue;
           const k = grid[i][j].i;
-          sample(f, phis[j], ys[i], p, n, grid[i][j].r + 0.012);
+          sample(f, phis[j], ys[i], p, n, grid[i][j].r + 0.007);
           dp[k * 3] = p.x * hs + O.x - pos.getX(k); dp[k * 3 + 1] = p.y * hs + O.y - pos.getY(k); dp[k * 3 + 2] = p.z * hs + O.z - pos.getZ(k);
           dn[k * 3] = n.x - nrm.getX(k); dn[k * 3 + 1] = n.y - nrm.getY(k); dn[k * 3 + 2] = n.z - nrm.getZ(k);
         }
@@ -314,27 +330,30 @@ const CharHead = (() => {
   }
   const WHITE = new THREE.Color(1, 1, 1);
 
-  // ears: front face with a raised helix rim and a hollow concha, flat back, standing slightly forward
+  // ears: an ear-shaped shell standing out from the side of the head, its back edge furthest off the skull: a rolled
+  // helix rim, the antihelix ridge inside it, the concha bowl in front of the ear canal, the tragus and a soft lobe
   function ears(mb, D, look) {
-    const CB = CharBody, hs = D.hs, O = D.headO, h = look.head || {}, ear = h.ear ?? 1, earY = -0.02, p = new V3();
+    const CB = CharBody, hs = D.hs, O = D.headO, h = look.head || {}, ear = h.ear ?? 1, earY = -0.015, p = new V3();
     for (const sd of [1, -1]) {
       sample(D.sdf, sd * 1.5, earY, p);
-      const ec = new V3(p.x - sd * 0.002, earY, p.z - 0.008);
-      const nOut = new V3(sd, 0, 0.2).normalize(), up = new V3(0, 1, -0.14).normalize(), fw = new V3().crossVectors(up, nOut).multiplyScalar(sd).normalize();
+      const ec = new V3(p.x - sd * 0.003, earY, p.z - 0.006);
+      const nOut = new V3(sd, 0, 0.12).normalize(), up = new V3(0, 1, -0.3).normalize(), fw = new V3().crossVectors(up, nOut).multiplyScalar(sd).normalize();
       const [eu, ev] = uv(sd * 1.55, earY);
-      const NR = 5, NT = CB.LOD < 1 ? 12 : 18;
+      const NR = CB.LOD < 1 ? 4 : 9, NT = CB.LOD < 1 ? 12 : 24;
       CB.surf(mb, NR * 2 + 1, NT + 1, (i, j) => {
         const fr = i <= NR, r = fr ? i / NR : (2 * NR - i) / NR, th = j / NT * Math.PI * 2;
-        const st = Math.sin(th), ct = Math.cos(th);
-        const ha = 0.0135 * ear * (1 - 0.22 * Math.max(0, -st)), hb = 0.0265 * ear;
-        const u = ct * ha * r, v = st * hb * r - (st < 0 ? 0.003 * r : 0);
-        const base = Math.max(0, 0.011 - u) * 0.42 + 0.001;
-        const rim = r > 0.72 ? 0.0036 * Math.sin((r - 0.72) / 0.28 * Math.PI) * (1 - 0.6 * Math.max(0, ct)) : 0;
-        const bowl = -0.0034 * Math.exp(-((r - 0.35) ** 2) / 0.06) * (1 - 0.5 * Math.max(0, st));
-        const w = fr ? base + 0.0032 + rim + bowl : base - 0.001;
+        const st = Math.sin(th), ct = Math.cos(th), lobe = Math.max(0, -st), e = st > 0 ? 0.72 : 0.9;   // a broad arched top, a rounder lobe
+        const ha = 0.0158 * ear * (1 - 0.3 * lobe ** 2) * (ct < 0 ? 1 : 0.88), hb = (st > 0 ? 0.03 : 0.029) * ear;
+        const u = Math.sign(ct) * Math.abs(ct) ** e * ha * r + 0.002 * lobe * r, v = Math.sign(st) * Math.abs(st) ** e * hb * r, U = u / 0.0158, V = v / 0.03;
+        const base = 0.0015 + Math.max(0, 0.006 - u) * 0.5 * (1 - 0.5 * lobe);           // the back edge stands furthest off the head
+        const rim = r > 0.74 ? 0.0032 * Math.sin((r - 0.74) / 0.26 * Math.PI) * (1 - 0.8 * lobe) * (1 - 0.5 * Math.max(0, ct) * (st < 0.3 ? 1 : 0)) : 0;
+        const anti = 0.0017 * Math.exp(-((r - 0.56) ** 2) / 0.012) * (1 - lobe) * (1 - 0.7 * Math.max(0, ct));
+        const bowl = Math.exp(-(((U - 0.18) ** 2) + ((V + 0.08) ** 2) * 1.4) / 0.09), concha = -0.0045 * bowl;
+        const tragus = 0.002 * Math.exp(-(((U - 0.8) ** 2) + ((V + 0.12) ** 2)) / 0.02);
+        const w = fr ? base + 0.003 + rim + anti + concha + tragus + 0.0015 * lobe : base + concha - 0.0006;
         const q = ec.clone().addScaledVector(fw, u).addScaledVector(up, v).addScaledVector(nOut, w);
-        const inner = fr && r < 0.72 ? Math.exp(-((r - 0.35) ** 2) / 0.08) : 0;
-        return { p: q.multiplyScalar(hs).add(O), u: eu, v: ev, w: CB.W1('head'), c: new THREE.Color(0.95 - inner * 0.28, 0.84 - inner * 0.4, 0.82 - inner * 0.4), r: 0.5 };
+        const cave = fr ? bowl : 0.15;
+        return { p: q.multiplyScalar(hs).add(O), u: eu, v: ev, w: CB.W1('head'), c: new THREE.Color(1 - cave * 0.2, 0.95 - cave * 0.32, 0.94 - cave * 0.32), r: 0.5 };
       }, { wrap: true, rough: 0.5 });
     }
   }

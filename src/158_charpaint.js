@@ -103,18 +103,19 @@ const CharPaint = (() => {
       if (sp.curl) {
         for (let i = 0; i < r.w * r.h / 30; i++) {
           const x = r.x + R() * r.w, y = r.y + R() * r.h, rad = (2 + R() * 3.5) * k * (sp.beard ? 0.6 : 1), l = R();
-          g.strokeStyle = css(tone(l < 0.45 ? mul(base, 0.55) : mul(base, 1.1 + R() * 0.4)), 0.5 + R() * 0.4); g.lineWidth = (0.8 + R()) * k;
+          g.strokeStyle = css(tone(l < 0.45 ? mul(base, 0.62) : mul(base, 1.02 + R() * 0.16)), 0.35 + R() * 0.35); g.lineWidth = (0.8 + R()) * k;
           g.beginPath(); g.arc(x, y, rad, R() * 6.3, R() * 6.3 + 3 + R() * 2); g.stroke();
         }
       } else {
         const bundles = Math.round(r.w / (5 * k)) + 4, sheen = sp.cap ? [0.5, 0.82] : [0.3, 0.55];
         for (let b = 0; b < bundles; b++) {
           const x0 = r.x + R() * r.w, bt = 0.7 + R() * 0.6, wav = (R() - 0.5) * 8 * k, n = 6 + Math.floor(R() * 6);
+          const sl = sp.part != null ? ((x0 - r.x) / r.w < (sp.part + Math.PI) / (2 * Math.PI) ? -1 : 1) * r.w * 0.07 : 0;   // combed away from the parting
           for (let i = 0; i < n; i++) {
             const x = x0 + (R() - 0.5) * 6 * k, c = tone(mul(base, bt * (0.8 + R() * 0.45)));
             g.strokeStyle = css(c, 0.3 + R() * 0.45); g.lineWidth = (0.6 + R() * 1.1) * k;
             const y0 = r.y + r.h * (1 - R() * 0.15), y1 = r.y + r.h * R() * 0.2;
-            g.beginPath(); g.moveTo(x, y0); g.bezierCurveTo(x + wav, r.y + r.h * 0.66, x - wav, r.y + r.h * 0.33, x + wav * 0.5, y1); g.stroke();
+            g.beginPath(); g.moveTo(x, y0); g.bezierCurveTo(x + wav + sl * 0.33, r.y + r.h * 0.66, x - wav + sl * 0.66, r.y + r.h * 0.33, x + wav * 0.5 + sl, y1); g.stroke();
           }
         }
         // sheen: a band of light strands
@@ -127,7 +128,7 @@ const CharPaint = (() => {
       }
       // roots darker (bottom of the region), ends lighter
       const gr = g.createLinearGradient(0, r.y + r.h, 0, r.y);
-      gr.addColorStop(0, 'rgba(10,6,4,0.4)'); gr.addColorStop(sp.cap ? 0.12 : 0.25, 'rgba(10,6,4,0)'); gr.addColorStop(1, sp.cap ? 'rgba(10,6,4,0.1)' : 'rgba(255,240,220,0.08)');
+      gr.addColorStop(0, sp.cap ? 'rgba(10,6,4,0)' : 'rgba(10,6,4,0.4)'); gr.addColorStop(sp.cap ? 0.12 : 0.25, 'rgba(10,6,4,0)'); gr.addColorStop(1, sp.cap ? 'rgba(10,6,4,0.1)' : 'rgba(255,240,220,0.08)');   // (no dark band along a cap's hairline)
       g.fillStyle = gr; g.fillRect(r.x, r.y, r.w, r.h);
       if (sp.part != null) {                                               // the parting: scalp showing along one meridian
         const x = r.x + r.w * (sp.part + Math.PI) / (2 * Math.PI), pg = g.createLinearGradient(x - 3 * k, 0, x + 3 * k, 0);

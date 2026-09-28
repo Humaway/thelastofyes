@@ -4,6 +4,8 @@
 //                                                          line-up of every character (or the listed ones)
 //   ?dev&test=faces&who=id[&em=smile,sad]                  emote grid: every emote (or the listed ones) on one face
 //   ?dev&test=anims                                        locomotion, poses, paired anims, gestures, talking
+//   ?dev&test=portraits&who=a,b[&em=emote|talk&light=studio|warm|cool]   each character three times (front, 3/4,
+//        profile); eval CONTENT.dev.pcam(i[, k]) frames row i (or its head k), CONTENT.dev.light(kind) relights
 // ============================================================================
 CONTENT.levels.STUDIO = {
   name: 'Character studio', origin: [-6000, 0, 0], grade: 'neutral', background: 0x1b1d21,
@@ -20,11 +22,12 @@ CONTENT.levels.STUDIO = {
     for (let i = 0; i < prof.length - 1; i++) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
     const cyc = new THREE.BufferGeometry(); cyc.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); cyc.setIndex(idx); cyc.computeVertexNormals();
     Build.mesh(cyc, new THREE.MeshStandardMaterial({ color: 0x5a5c60, roughness: 0.92 }), { pos: [0, 0, 0], shadow: false, receive: true });
-    Build.hemi({ sky: 0x9aa4b4, ground: 0x3a3430, intensity: 0.35 });
+    const hemi = Build.hemi({ sky: 0x9aa4b4, ground: 0x3a3430, intensity: 0.35 });
     const key = Build.sun({ dir: [0.55, -0.75, -0.6], color: 0xfff0dc, intensity: 2.6, area: 9, target: [0, 1, 0] });
     key.shadow.bias = -0.0002; key.shadow.normalBias = 0.02;
-    Build.light('spot', { pos: [-5, 2.6, 3.5], target: [0, 1.3, 0], color: 0xb8ccff, intensity: 18, distance: 20, angle: 0.8, penumbra: 0.9 });
-    Build.light('spot', { pos: [0.3, 3, -5], target: [0, 1.5, 0], color: 0xfff4e8, intensity: 24, distance: 16, angle: 0.7, penumbra: 0.6 });
+    const fill = Build.light('spot', { pos: [-5, 2.6, 3.5], target: [0, 1.3, 0], color: 0xb8ccff, intensity: 18, distance: 20, angle: 0.8, penumbra: 0.9 });
+    const rim = Build.light('spot', { pos: [0.3, 3, -5], target: [0, 1.5, 0], color: 0xfff4e8, intensity: 24, distance: 16, angle: 0.7, penumbra: 0.6 });
+    A.data.L = { hemi, key, fill, rim };
     A.marker('mk_start', [0, 0, 3], Math.PI);
   },
 };
@@ -46,6 +49,30 @@ CONTENT.levels.STUDIO = {
     return out;
   };
   CONTENT.dev.faceCanvas = name => { const c = Game.G.who(name); return c.face.cv.toDataURL('image/png'); };   // eval helper: the live face canvas
+
+  // studio relight: 'studio' (neutral three-point), 'warm' (tungsten key, cool fill: the store), 'cool' (moonlit key,
+  // sodium rim: the road at night)
+  const LIGHTS = { studio: [[0xfff0dc, 2.6], [0xb8ccff, 18], [0xfff4e8, 24], 0.35], warm: [[0xffb878, 2.4], [0x7088c0, 10], [0xffc890, 30], 0.2], cool: [[0x9ab4ff, 1.1], [0x40506a, 6], [0xff9a48, 40], 0.12] };
+  CONTENT.dev.light = kind => {
+    const L = Game.G.areaById('STUDIO').data.L, v = LIGHTS[kind] || LIGHTS.studio;
+    ['key', 'fill', 'rim'].forEach((n, i) => { L[n].color.set(v[i][0]); L[n].intensity = v[i][1]; });
+    L.hemi.intensity = v[3];
+  };
+  CONTENT.dev.portraits = async G => {
+    const A = await G.area('STUDIO'), em = P.get('em');
+    const ids = (P.get('who') || 'chase_young,luke_young,bub,customer,neighbour,soldier').split(',');
+    ids.forEach((id, i) => [0, 0.7, Math.PI / 2].forEach((yaw, k) => {
+      const c = A.char(id, { name: `p${i}_${k}`, at: [i * 1.4 + k * 0.36, 0, 0], yaw });
+      if (em === 'talk') A.update(() => { if (!c.speaking) c.speak('Your grandkids’ll be in your hand, mate. Every night if you want.', 3.4); });
+      else if (em) c.emote(em);
+    }));
+    CONTENT.dev.light(P.get('light'));
+    CONTENT.dev.pcam = (i = 0, k) => {
+      const e = G.who(`p${i}_${k ?? 1}`).point('eyes'), x = e.x + 6000;
+      if (k == null) cam([x, e.y, 2.0], [x, e.y - 0.03, 0], 85); else cam([x, e.y + 0.01, 0.95], [x, e.y - 0.035, 0], 85);
+    };
+    CONTENT.dev.pcam(0);
+  };
 
   CONTENT.dev.chars = async G => {
     const A = await G.area('STUDIO');

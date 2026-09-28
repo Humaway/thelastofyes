@@ -13,10 +13,12 @@
 //                 damage(n, {type:'bullet'|'melee'|'fire'|'shiv'|'choke'|'explosion'|'arrow'|'stab', part:'head'|'body', from:Vector3, force,
 //                 weapon ('fists' = a punch), by (agent that dealt it; omitted = the player)}),
 //                 stun(sec), kill(), alert(pos), setBehaviour(b, opts), onDeath(fn), takedown(kind), grabbing (kind while it holds the player) }
-//        Damage n is in hits: fists 1, melee weapon 1.5, revolver 1.5, pistol 1, rifle 3, shotgun 4 up close. Bullet/arrow
-//        headshots kill Scrollers, Lurkers and humans outright and count double on Clickers and Bloatware. Scrollers take 2 hits,
-//        Lurkers 3, humans 3, Clickers 4 (2 headshots; a punch does nothing and earns a grab; fire, shiv or stab kills), Bloatware
-//        18 (fire ×3; melee barely scratches it). Hit reactions flinch and stagger; the dead drop their weapon; bodies stay.
+//        Damage n is in melee hits (Play's units: fists 0.5, melee weapon 1–1.6, revolver 1.6, pistol 1.1, rifle 4, shotgun
+//        pellets 0.5, arrow ≤ 2.6, fire 1 per 0.5 s). Bullet/arrow headshots kill Scrollers, Lurkers and humans outright and
+//        count double on Clickers and Bloatware. Scrollers take 2 hits, Lurkers 3, humans 3, Clickers 4 (2 headshots or a close
+//        shotgun blast; a punch — melee under 1 hit — does nothing and earns a grab; fire, shiv or stab kills), Bloatware 18
+//        (fire ×3; melee barely scratches it). Hit reactions flinch and stagger; the dead drop their weapon; bodies stay.
+//        setBehaviour('scripted') parks any agent (companions too) until another behaviour is set.
 //   AI.companion(char, {role:'chloe'|'wai'|'zane'|'aidan'|'luke'|'techsupport'|'regional', follow=true, weapon}) -> agent
 //        follow 3–5 m (inside of corners, never in doorways or the line of fire; teleports near the player if > 25 m behind and
 //        off-screen), crouches/holds still in stealth, invisible to enemies during stealth unless scripted, combat callouts,
@@ -27,15 +29,15 @@
 //        rifle, aidan slingshot (stuns), techsupport shotgun. Chloe hands over 'bars' in the calm and a 'bottle' in fights
 //        (Play.give). Companions take no damage; enemies only ever target the player.
 //   AI.noise(pos, radius, source)      emit noise: footsteps (Play), gunshots 40 m, glass 15 m, thrown objects where they land
-//        source 'player' | 'gunshot' | 'melee' = the player's own noise (infected hunt it, humans investigate or engage); any
-//        other string is a distraction (everyone investigates the spot). The player's movement noise is also sampled from
-//        Play.noiseRadius four times a second, so Play need not emit footsteps.
+//        source 'step' | 'land' | 'vault' | 'climb' | 'takedown' | 'melee' | 'gunshot' | 'player' = the player's own noise
+//        (infected hunt it, humans investigate or engage); any other string is a distraction (everyone investigates the spot).
 //   AI.hitTest(origin, dir, maxDist) -> { agent, part:'head'|'body', point, dist } | null     (character hit volumes; world
 //        geometry between origin and the hit blocks it; companions and crowds are never hit)
 //   AI.takedownTarget(pos, yaw) -> agent | null     an unaware (or stunned) enemy within 1.3 m whose back faces the player;
 //        never Bloatware. Clickers are returned too — Play decides (SIM shiv only).
-//   agent.takedown(kind:'choke'|'shiv'|'stab') -> Promise   paired animation with Play.char (AI animates both); resolves when
-//        done (agent dead). choke 2.6 s, shiv 1.1 s, stab 0.9 s.
+//   agent.takedown(kind:'choke'|'shiv'|'stab') -> Promise   paired animation with Play.char: AI turns the pair to face the
+//        same way, sets the victim 0.42 m in front and animates it (Play animates the player); resolves when done (agent
+//        dead). choke 2.6 s, shiv 1.1 s, stab 0.9 s.
 //   AI.listenTargets(pos, r) -> agents currently making noise within r (Airplane Mode silhouettes)
 //   AI.detectors -> [{ dir (radians relative to camera yaw), amount 0..1 }]  detection building (UI.detect arcs)
 //   AI.update(dt) · AI.clear() · AI.list · AI.byName(name) -> Character · AI.alertLevel (0..1, drives Audio.tension)
@@ -43,13 +45,12 @@
 //   AI.extendArea(A) adds A.patrol(name, points), A.cover(points), A.navBounds(x1, z1, x2, z2)
 //        + A.remark({at, r=4, text | id (CONTENT.remarks), emote, who='chloe', cond}) — a companion remark tag, each plays
 //          once when she is near it and nothing else is happening; text null = she only looks (and goes quiet)
-//        + A.conceal(x1, z1, x2, z2, k=0.5, kCrouched=k) — darkness (k) or tall grass (0.75, 0.2): scales how far and how fast
-//          the player is seen inside the box
-//   AI.fire(pos, {r=1.8, dur=4, by}) — a toxic fire pool (Bloatware pillows; also the player's spicy pillow): burns the player
-//        and every agent inside (Clickers die, Bloatware ×3), except `by`
-//   AI.smoke(pos, {r=3.5, dur=6}) — a vape cloud: no sight line passes through it; humans inside are blinded and stunned
+//        Darkness, tall grass and smoke come from Play.visibility (A.dark / A.tallGrass): they shrink how far and how fast
+//        the player is seen; crouching shortens it too, standing still slows it, and waist-high cover hides a crouched body.
+//   AI.fire(pos, {r=1.8, dur=4, by}) — a toxic fire pool (Bloatware pillows): burns the player and every agent inside
+//        (Clickers die, Bloatware ×3), except `by`
 //   AI.grabber -> the agent holding the player (or null)
-// Rules: cap 12 active agents (CONFIG.maxActiveAI); freeze agents > 60 m away; companions never break stealth; the player
+// Rules: cap 12 active agents (CONFIG.maxActiveAI; crowd extras are cheap and not counted); freeze agents > 60 m away; companions never break stealth; the player
 // always knows why they were spotted (detection builds visibly: the head turns, the arc fills, they stop and bark at the
 // half-way mark); enemies bark by title/slang (CONTENT.barks), never names.
 // When an agent grabs the player it turns both to face each other, holds itself 0.55 m in front of the player and calls
@@ -57,9 +58,9 @@
 // ============================================================================
 const AI = (() => {
   const V3 = THREE.Vector3, TAU = Math.PI * 2;
-  const list = [], detectors = [], noises = [], fx = [], remarks = [], zones = [], smokes = [], routes = new Map();
+  const list = [], detectors = [], noises = [], fx = [], remarks = [], routes = new Map();
   const _a = new V3(), _b = new V3(), _c = new V3(), _d = new V3(), _e = new V3();
-  let alertLevel = 0, grabber = null, noiseT = 0, fxRoot = null, seedN = 1, stealthOn = false, combatWas = false, fightT = 0;
+  let alertLevel = 0, grabber = null, fxRoot = null, seedN = 1, stealthOn = false, combatWas = false, fightT = 0;
 
   // ---- tables ------------------------------------------------------------------------------------------------------
   const TYPES = {
@@ -92,7 +93,7 @@ const AI = (() => {
     landline: { def: 'landline', weapons: ['rifle'] },
   };
   const ROLES = { chloe: 'brick', wai: 'bat', zane: 'rifle', aidan: 'slingshot', luke: 'rifle', techsupport: 'shotgun', regional: 'rifle' };
-  const PLAYER_NOISE = new Set(['player', 'gunshot', 'melee']);
+  const PLAYER_NOISE = new Set(['player', 'step', 'land', 'vault', 'climb', 'takedown', 'melee', 'gunshot']);
 
   // ---- small helpers ---------------------------------------------------------------------------------------------------
   const pos = a => a.char.root.position;
@@ -105,26 +106,30 @@ const AI = (() => {
   const gridOf = a => AINav.get(Game.areas.get(a.area) || Game.area);
   const camYaw = () => { Engine.camera.getWorldDirection(_e); return Math.atan2(_e.x, _e.z); };
   const relDir = p => U.wrapAngle(camYaw() - U.yawTo(Engine.camera.position, p));
-  const diffK = () => ({ story: 0.5, hard: 1.2 })[SETTINGS.difficulty] || 1;
   const bark = (a, cat) => Dialogue.bark(a.type === 'scroller' ? 'scroller' : a.faction, cat, { pos: pos(a), char: a.char });
-  const chaseBark = cat => Dialogue.bark('chase', cat, { char: Play.char });
+  const chaseBark = cat => Play.profile.stats !== 'chloe' && Dialogue.bark('chase', cat, { char: Play.char });
   function onScreen(p) {
     const v = _e.copy(p).setY(p.y + 1).project(Engine.camera);
     return v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05 && World.visible(Engine.camera.position, _d.copy(p).setY(p.y + 1));
   }
-  function concealAt(p, crouched) {
-    let k = 1;
-    for (const z of zones) if (p.x >= z.x1 && p.x <= z.x2 && p.z >= z.z1 && p.z <= z.z2) k = Math.min(k, crouched ? z.kc : z.k);
-    return k;
-  }
-  function smoked(p, q) {
-    for (const s of smokes) {
-      const dx = q.x - p.x, dz = q.z - p.z, t = U.clamp(((s.pos.x - p.x) * dx + (s.pos.z - p.z) * dz) / (dx * dx + dz * dz || 1));
-      if (Math.hypot(p.x + dx * t - s.pos.x, p.z + dz * t - s.pos.z) < s.r) return true;
+  // sight: walls and tall props (World), plus the low solid cover Build leaves out of LOS (barriers, crates, sandbags, car
+  // bodies) so a crouched body behind waist-high cover is hidden
+  function lowCover(p, q) {
+    const d = [q.x - p.x, q.y - p.y, q.z - p.z], o = [p.x, p.y, p.z];
+    for (const b of World.boxes) {
+      if (b.sight || !b.block || b.max.y - b.min.y > 1.4) continue;
+      const mn = [b.min.x, b.min.y, b.min.z], mx = [b.max.x, b.max.y, b.max.z];
+      let t0 = 0, t1 = 1;
+      for (let i = 0; i < 3 && t0 <= t1; i++) {
+        if (Math.abs(d[i]) < 1e-9) { if (o[i] < mn[i] || o[i] > mx[i]) t0 = 2; continue; }
+        let a = (mn[i] - o[i]) / d[i], c = (mx[i] - o[i]) / d[i]; if (a > c) [a, c] = [c, a];
+        t0 = Math.max(t0, a); t1 = Math.min(t1, c);
+      }
+      if (t0 <= t1 && t0 > 0) return true;
     }
     return false;
   }
-  const los = (p, q) => World.visible(p, q) && !smoked(p, q);
+  const los = (p, q) => World.visible(p, q) && !lowCover(p, q);
 
   // ---- spawning ------------------------------------------------------------------------------------------------------------
   function spawn(type, at, o = {}) {
@@ -147,7 +152,7 @@ const AI = (() => {
     const a = {
       char: c, type, T: TYPES[type], faction: o.faction || null, name: o.name || c.name, rng: o.rng || U.rng(seedN++ * 31), state: 'idle',
       hp: o.hp ?? TYPES[type].hp, alive: true, aware: false, area: Game.area ? Game.area.id : null, home: c.root.position.clone(), homeYaw: c.yaw,
-      rest: c.poseName, radius: o.radius ?? 5, det: 0, seeK: 0, vis: false, perT: 0, lkp: null, seenT: -99, heardT: -99, spotT: -99, blindT: 0, stunned: 0,
+      rest: c.poseName, radius: o.radius ?? 5, det: 0, seeK: 0, vis: false, perT: 0, lkp: null, seenT: -99, heardT: -99, spotT: -99, stunned: 0,
       v: 0, goal: null, path: null, pi: 0, planT: 0, dirty: false, spd: 0, stop: 0.5, crouch: false, face: null, stuckT: 0, stuckN: 0, lastP: c.root.position.clone(),
       stunT: 0, busy: null, grabbing: null, grabCd: 0, cd: 0, timer: 0, sub: null, W: null, ammo: 0, ownChar: !o.char, deathFns: [], lean: 0,
       damage: (n, opt) => damage(a, n, opt), stun: s => stun(a, s), kill: () => die(a, {}), alert: p => alert(a, p),
@@ -161,7 +166,7 @@ const AI = (() => {
     if (a.alive) a.state = 'idle';
     if (o.route) a.route = typeof o.route === 'string' ? (routes.get(o.route) || { pts: [] }).pts : o.route.map(p => Game.G.marker(p).pos.clone());
     if (o.radius) a.radius = o.radius;
-    a.ri = 0; a.timer = 0.5 + a.rng() * 1.5;
+    a.ri = 0; a.timer = 0.5 + a.rng() * 1.5; a.lookYaw = a.char.yaw;
     if (a.type === 'crowd') crowdSetup(a);
   }
 
@@ -170,9 +175,9 @@ const AI = (() => {
     if (!a.alive || a.companion || a.busy === 'takedown') return;
     const T = a.T, type = o.type || 'bullet', head = o.part === 'head';
     const from = o.from ? U.v3(o.from).clone() : o.by ? pos(o.by).clone() : Play.char ? Play.char.root.position.clone() : pos(a).clone();
-    if (type === 'melee' && T.noPunch && (o.weapon === 'fists' || !o.weapon)) {        // a punch does nothing to Clickers and Bloatware
+    if (type === 'melee' && T.noPunch && (o.weapon === 'fists' || n < 1)) {        // a punch does nothing to Clickers and Bloatware
       react(a, 0.3, from);
-      if (a.type === 'clicker' && !o.by && canGrab(a)) startGrab(a, 'clicker');
+      if (a.type === 'clicker' && !o.by && canGrab(a) && flat(pos(a), Play.char.root.position) < 2) startGrab(a, 'clicker');
       return;
     }
     let d = n;
@@ -180,7 +185,6 @@ const AI = (() => {
     else if ((type === 'bullet' || type === 'arrow') && head) d = T.headKill ? a.hp : n * 2;
     else if (type === 'shiv' || type === 'stab' || type === 'choke') d = a.type === 'bloatware' ? 1 : a.hp;
     else if (type === 'melee' && a.type === 'bloatware') d = n * 0.2;
-    else if (type === 'melee' && a.type === 'clicker') d = n * 0.5;
     a.hp -= d;
     if (a.hp <= 0) { die(a, Object.assign({}, o, { type, from })); return; }
     react(a, Math.min(1, d / a.maxHp + (type === 'melee' || type === 'explosion' ? 0.35 : 0.15)), from);
@@ -233,16 +237,15 @@ const AI = (() => {
   }
 
   // ---- perception --------------------------------------------------------------------------------------------------------------
-  // How well agent `a` sees the player right now: 0 (not at all) .. 1. Cone 100°, 18 m, cut by darkness, grass, smoke.
+  // How well agent `a` sees the player right now: 0 (not at all) .. 1. Cone 100°, 18 m, cut by darkness, grass, smoke, crouching.
   function sightK(a, pl) {
-    const pp = pl.root.position, e = eye(a, _a), crouched = !!Play.crouched;
-    const conceal = concealAt(pp, crouched) * (Play.visibility ?? 1);
-    const d = flat(e, pp), range = 18 * a.T.sight * (0.3 + 0.7 * conceal) * (a.aware ? 1.3 : 1);
-    if (d > range || a.blindT > now()) return 0;
+    const pp = pl.root.position, e = eye(a, _a), crouched = !!Play.crouched, conceal = Play.visibility ?? 1;
+    const d = flat(e, pp), range = 18 * a.T.sight * (0.15 + 0.85 * conceal) * (crouched ? 0.7 : 1) * (a.aware ? 1.3 : 1);
+    if (d > range) return 0;
     const ang = Math.abs(U.wrapAngle(U.yawTo(e, pp) - a.char.yaw));
     if (ang > 0.87 && !(d < 2.2 && Play.speed > 0.6)) return 0;
     let seen = false;
-    for (const h of crouched ? [0.95] : [1.5, 1.0]) if (los(e, _b.set(pp.x, pp.y + h, pp.z))) { seen = true; break; }
+    for (const h of crouched ? [0.7] : [1.5, 1.0]) if (los(e, _b.set(pp.x, pp.y + h, pp.z))) { seen = true; break; }
     return seen ? conceal * (ang > 0.55 ? 0.55 : 1) : 0;
   }
   // detection build-up: faster when close and when the player moves; slower in the periphery and crouched
@@ -377,13 +380,14 @@ const AI = (() => {
   function posture(a, dt) { a.lean = U.damp(a.lean, 0, 5, dt); a.char.root.rotation.x = a.lean; }
 
   // ---- grabs and blows -------------------------------------------------------------------------------------------------------------------------
-  const canGrab = a => !grabber && a.grabCd < now() && !!Play.char && !Director.active;
+  const NO_GRAB = new Set(['takedown', 'grab', 'death', 'squeeze', 'ladder', 'climb', 'boost']);
+  const canGrab = a => !grabber && a.grabCd < now() && !!Play.char && !Director.active && !NO_GRAB.has(Play.busy);
   function startGrab(a, kind) {
     const pl = Play.char, pp = pl.root.position, c = a.char;
     grabber = a; a.busy = 'grab'; a.grabbing = kind; a.goal = null; a.path = null; a.v = 0;
     pl.yaw = U.yawTo(pp, pos(a)); c.yaw = pl.yaw + Math.PI;
-    c.gesture('grab', { hold: true });
-    if (kind === 'scroller' || kind === 'lurker') { c.phoneGlow(true); Audio.sfx('scroller_scream', { pos: pos(a).clone(), rate: 1.2, vol: 0.7 }); }
+    c.gesture('struggle', { hold: true });
+    if (kind === 'scroller' || kind === 'lurker') { c.phoneGlow(true); Audio.sfx('scroller_scream', { pos: pos(a).clone(), rate: 1.2, vol: 0.7 }); }   // the lit screen, in his face
     Audio.sfx('tackle', { pos: pp.clone() });
     Play.grab(a, kind).then(res => {
       if (grabber === a) grabber = null;
@@ -408,7 +412,7 @@ const AI = (() => {
       if (!a.alive || a.stunT > 0 || !Play.char) return;
       const pp = Play.char.root.position, d = flat(pos(a), pp), ang = Math.abs(U.wrapAngle(U.yawTo(pos(a), pp) - a.char.yaw));
       Audio.sfx('swing', { pos: pos(a).clone(), vol: 0.6 });
-      if (d < W.reach + 0.35 && ang < 1.1 && !grabber) { Play.damage(W.dmg * diffK(), { from: pos(a).clone(), type: 'melee', agent: a }); Audio.sfx('punch', { pos: pp.clone() }); }
+      if (d < W.reach + 0.35 && ang < 1.1 && !grabber) { Play.damage(W.dmg, a); Audio.sfx('punch', { pos: pp.clone() }); }
     });
   }
 
@@ -464,7 +468,7 @@ const AI = (() => {
       return;
     }
     a.state = 'combat';
-    if (s.k === 'inhale') { a.crouch = false; halt(a, pp); if ((s.t += dt) > 0.4) { s.k = 'burst'; s.t = 0; a.char.phoneGlow(false); } return; }
+    if (s.k === 'inhale') { a.crouch = false; halt(a, pp); if ((s.t += dt) > 0.4) { s.k = 'burst'; s.t = 0; a.char.phoneGlow(false); a.char.pose('stand', { dur: 0.2 }); } return; }
     if (s.k === 'burst') {
       if (d < 1.3) { halt(a, pp); if (canGrab(a) && a.rng() < 0.55) startGrab(a, 'lurker'); else strike(a, LUNGE); s.k = 'retreat'; return; }
       go(a, pp, TYPES.lurker.run, 1.1);
@@ -473,7 +477,7 @@ const AI = (() => {
     }
     if (!s.to) { s.to = coverNear(a, pos(a), 16, pp, 7) || { pos: pos(a).clone(), dir: new V3(0, 0, 1) }; a.cd = 4; }   // retreat and re-hide
     a.crouch = false;
-    if (go(a, s.to.pos, TYPES.lurker.run * 0.9, 0.4)) { a.spot = s.to; a.home.copy(s.to.pos); a.sub = { k: 'hide' }; a.primed = 0; a.state = 'idle'; }
+    if (go(a, s.to.pos, TYPES.lurker.run * 0.9, 0.4)) { a.spot = s.to; a.home.copy(s.to.pos); a.sub = { k: 'hide' }; a.primed = 0; a.state = 'idle'; a.char.pose(a.rest); }
   }
   // a cover spot near `around`, at least `minFromThreat` from the threat, preferring ones the threat can't see
   function coverNear(a, around, r, threat, minFromThreat = 0) {
@@ -549,7 +553,7 @@ const AI = (() => {
     // combat -----------------------------------------------------------------------------
     if ((a.perT -= dt) <= 0) {
       a.perT = 0.15 + a.rng() * 0.05;
-      a.vis = d < 45 && a.blindT < now() && los(eye(a, _a), _b.set(pp.x, pp.y + (Play.crouched ? 0.95 : 1.4), pp.z));
+      a.vis = d < 45 && Play.visibility !== 0 && los(eye(a, _a), _b.set(pp.x, pp.y + (Play.crouched ? 0.7 : 1.4), pp.z));
       if (a.vis) { a.lkp.copy(pp); a.seenT = now(); }
     }
     a.char.lookAt(a.vis ? pl : null);
@@ -564,8 +568,8 @@ const AI = (() => {
     const b = a.behaviour;
     if (b === 'patrol' && a.route && a.route.length) {
       const q = a.route[a.ri % a.route.length];
-      if (a.timer > 0) { a.timer -= dt; halt(a, _e.copy(pos(a)).add(U.fwd(a.char.yaw + Math.sin(a.timer * 1.5) * 0.8, _d))); return; }
-      if (go(a, q, TYPES.human.walk, 0.4)) { a.ri++; a.timer = 1.5 + a.rng() * 2.5; }
+      if (a.timer > 0) { a.timer -= dt; halt(a, _e.copy(pos(a)).add(U.fwd(a.lookYaw + Math.sin(a.timer * 1.5) * 0.8, _d))); return; }   // a look round at each stop
+      if (go(a, q, TYPES.human.walk, 0.4)) { a.ri++; a.timer = 1.5 + a.rng() * 2.5; a.lookYaw = a.char.yaw; }
     } else if (b === 'wander') wander(a, dt, TYPES.human.walk * 0.85);
     else if (b === 'hunt') { a.state = 'search'; a.sub = { t: 0, wait: 0, p: pl.root.position.clone() }; a.lkp = a.sub.p.clone(); }
     else if (flat(pos(a), a.home) > 0.6) go(a, a.home, TYPES.human.walk, 0.3);
@@ -622,7 +626,7 @@ const AI = (() => {
     // cover: pick one (and again when the player gets round it)
     if ((a.coverT = (a.coverT ?? 0) - dt) <= 0) {
       a.coverT = 1.5 + a.rng();
-      if (!a.cover || flat(a.cover.pos, pp) < 4 || los(_a.set(pp.x, pp.y + 1.5, pp.z), _b.copy(a.cover.pos).setY(a.cover.pos.y + (a.cover.low ? 0.9 : 1.3)))) { a.cover = pickCover(a, pp, W); if (s.k === 'hold') s.k = 'move'; }
+      if (!a.cover || flat(a.cover.pos, pp) < 4 || los(_a.set(pp.x, pp.y + 1.5, pp.z), _b.copy(a.cover.pos).setY(a.cover.pos.y + (a.cover.low ? 0.7 : 1.3)))) { a.cover = pickCover(a, pp, W); if (s.k === 'hold') s.k = 'move'; }
     }
     if (a.reloadT > 0) {
       a.reloadT -= dt; if (a.reloadT <= 0) a.ammo = W.mag;
@@ -639,7 +643,10 @@ const AI = (() => {
     if (s.k === 'hold') {
       a.crouch = !!(a.cover && a.cover.low); halt(a, a.lkp);
       if (a.cover && flat(pos(a), a.cover.pos) > 1.2) { s.k = 'move'; return; }
-      if ((a.fireT -= dt) <= 0) { s.n = Math.round(rnd(W.burst, a.rng)); s.t = 0; if (a.cover && !a.cover.low) { s.k = 'peek'; s.to = peekSpot(a, pp); } else s.k = 'aim'; }
+      if ((a.fireT -= dt) <= 0) {
+        if (shooters() >= 2) a.fireT = 0.3 + a.rng() * 0.6;                        // two guns up at a time: the rest hold and yell
+        else { s.n = Math.round(rnd(W.burst, a.rng)); s.t = 0; if (a.cover && !a.cover.low) { s.k = 'peek'; s.to = peekSpot(a, pp); } else s.k = 'aim'; }
+      }
       else if (!a.cover && !a.vis && now() - a.seenT > 2.5) s.k = 'move';
       return;
     }
@@ -655,6 +662,7 @@ const AI = (() => {
     }
     if (!a.cover || go(a, a.cover.pos, 2.4, 0.3)) { s.k = 'hold'; assignFlank(a); }       // back into cover
   }
+  const shooters = () => list.reduce((n, b) => n + (b.alive && b.sub && (b.sub.k === 'aim' || b.sub.k === 'peek') ? 1 : 0), 0);
   function peekSpot(a, pp) {
     const g = gridOf(a), c = a.cover; if (!g) return null;
     for (const side of [1, -1]) {
@@ -674,7 +682,7 @@ const AI = (() => {
       const sc = -dSelf - Math.abs(dT - ideal) * 0.5 + (cv.low ? 1.5 : 0) + a.rng();
       if (sc <= bs || list.some(o => o !== a && o.alive && (o.cover === cv || o.spot === cv))) continue;
       if (++tests > 24) break;
-      if (los(te, _b.copy(cv.pos).setY(cv.pos.y + (cv.low ? 0.9 : 1.3)))) continue;
+      if (los(te, _b.copy(cv.pos).setY(cv.pos.y + (cv.low ? 0.7 : 1.3)))) continue;
       bs = sc; best = cv;
     }
     return best;
@@ -696,13 +704,12 @@ const AI = (() => {
     flash(muzzle);
     const sp = Play.speed || 0;
     let p = W.acc * U.clamp(1.15 - d / W.range, 0.1, 1) * (sp > 4 ? 0.5 : sp > 1 ? 0.8 : 1) * (a.first ? 0.35 : 1) * ({ story: 0.7, hard: 1.15 }[SETTINGS.difficulty] || 1);
-    if (Play.crouched && !los(eye(a, _a), _b.set(pp.x, pp.y + 0.7, pp.z))) p *= 0.5;
     const hit = a.rng() < p, tgt = chest(pl, new V3());
     if (!hit) { tgt.add(U.fwd(U.yawTo(muzzle, tgt) + Math.PI / 2, _d).multiplyScalar((a.rng() - 0.5) * 2.2)); tgt.y += (a.rng() - 0.3) * 1.2; tgt.sub(muzzle).multiplyScalar(3).add(muzzle); }
-    if (W.arrow) { arrow(muzzle, tgt, hit ? () => Play.damage(W.dmg * diffK(), { from: pos(a).clone(), type: 'arrow', agent: a }) : null); return; }
+    if (W.arrow) { arrow(muzzle, tgt, hit ? () => Play.damage(W.dmg, a) : null); return; }
     const t = World.raycast(muzzle, tgt, null), end = muzzle.clone().lerp(tgt, hit ? 1 : t);
     tracer(muzzle, end);
-    if (hit) Play.damage(W.dmg * diffK(), { from: pos(a).clone(), type: 'bullet', agent: a });
+    if (hit) Play.damage(W.dmg, a);
     else if (t < 1) puff(end);
   }
   function muzzleOf(c, out) { const g = c.held('r'); if (g && g.userData.muzzle) { g.updateWorldMatrix(true, false); return out.set(...g.userData.muzzle).applyMatrix4(g.matrixWorld); } return c.point('hand_r', out); }
@@ -714,6 +721,7 @@ const AI = (() => {
     const a = old || agent('companion', c, { name: role });
     Object.assign(a, { companion: true, role, follow: o.follow !== false, holding: false, dest: null });
     a.wname = o.weapon || ROLES[role]; a.W = WEAPONS[a.wname] || null;
+    if ((a.W || a.wname === 'slingshot') && !c.held('r')) c.hold(a.wname, 'r');
     if (old) return a;
     Object.assign(a, { slot: null, slotT: 0, rescueT: -99, quietT: 0, throwT: 5, fireT: 3, offerT: 40, calloutT: 0, idleT: 0, actT: 4, supplyT: 150 + a.rng() * 90, stillT: 0, farT: 0, sitting: false });
     a.say = (line, opts = {}) => Dialogue.say(role, line, Object.assign({ char: c }, opts));
@@ -749,15 +757,21 @@ const AI = (() => {
     const combat = enemies.some(e => e.state === 'combat' && flat(pos(e), pp) < 35);
     const stealth = !combat && enemies.some(e => flat(pos(e), pp) < 25);
     // left far behind and nobody can see: appear somewhere close and hidden
-    if (d > 25 && !onScreen(cp)) { const q = hiddenSpot(pl); if (q) { cp.copy(q); c.yaw = U.yawTo(cp, pp); halt(a); a.slot = null; chaseBark('follow'); return; } }
+    if (d > 25 && !onScreen(cp)) { const q = hiddenSpot(pl); if (q) { cp.copy(q); c.yaw = U.yawTo(cp, pp); halt(a); a.slot = null; return; } }
     a.farT = d > 12 ? a.farT + dt : 0;
     if (a.farT > 4) { a.farT = 0; chaseBark('follow'); }
     if (combat && companionCombat(a, dt, pl, enemies)) return;
     if (a.busy) return;
-    if (stealth && a.role === 'chloe' && a.rng() < dt / 25) Dialogue.bark('chloe', 'stealth', { char: c });
+    if (stealth && a.role === 'chloe') {
+      if (enemies.some(e => e.type === 'clicker' && flat(pos(e), cp) < 7)) Dialogue.bark('chloe', 'clicker', { char: c });
+      else if (a.rng() < dt / 25) Dialogue.bark('chloe', enemies.some(e => e.type !== 'human' && flat(pos(e), pp) < 25) ? 'stealthInfected' : 'stealth', { char: c });
+    }
     const mode = combat ? 'combat' : stealth ? 'stealth' : 'calm';
+    if (mode === 'calm' && a.visit) { standUp(a); visit(a, pl); return; }
+    if (mode === 'calm' && a.stroll && (Play.speed || 0) < 0.3) { if (go(a, a.stroll, 1.1, 0.3)) a.stroll = null; return; }
+    a.stroll = null;
     a.crouch = mode === 'stealth' || (mode === 'combat' && !!Play.crouched);
-    if (mode === 'stealth' && d < 6 && enemies.some(e => e.state !== 'combat' && flat(pos(e), cp) < 9)) { halt(a); standUp(a); return; }   // hold still
+    if (mode === 'stealth' && d < 6 && (Play.speed || 0) < 0.3 && enemies.some(e => e.state !== 'combat' && flat(pos(e), cp) < 9)) { halt(a); standUp(a); return; }   // hold still
     if ((a.slotT -= dt) <= 0) {
       a.slotT = 0.4;
       if (!a.goal && slotOk(a, cp, pl, mode)) a.slot = null;
@@ -780,6 +794,8 @@ const AI = (() => {
     const g = gridOf(a);
     if (g && (!g.free(p) || g.narrow(p) || !g.clear(pp, p))) return false;
     if ((mode === 'combat' || Play.aiming) && Math.abs(U.wrapAngle(U.yawTo(pp, p) - camYaw())) < 0.65) return false;   // line of fire
+    const cam = Engine.camera.position, cx = pp.x - cam.x, cz = pp.z - cam.z, t = Math.max(0, ((p.x - cam.x) * cx + (p.z - cam.z) * cz) / (cx * cx + cz * cz || 1));
+    if (Math.hypot(cam.x + cx * t - p.x, cam.z + cz * t - p.z) < 0.9) return false;                   // on the camera's ray through the player
     return !list.some(o => o !== a && o.companion && flat(o.slot || pos(o), p) < 1.3);
   }
   const SLOTS = [2.5, -2.5, 3.14, 2, -2, 1.5, -1.5];
@@ -810,13 +826,15 @@ const AI = (() => {
     const c = a.char, pp = pl.root.position;
     if ((a.stillT += dt) < 2) return;
     if (Play.speed > 0.3) { a.idleT = 0; standUp(a); } else a.idleT += dt;
-    if (!a.sitting && a.idleT > 22 && a.role === 'chloe' && !Dialogue.busy) { a.sitting = true; c.lookAt(null); c.pose('sit_ground'); }
+    if (!a.sitting && a.idleT > 22 && a.role === 'chloe' && !Dialogue.busy && !(a.jumpyT > now())) { a.sitting = true; c.lookAt(null); c.pose('sit_ground'); }
     if ((a.actT -= dt) <= 0) {
-      a.actT = 4 + a.rng() * 6;
-      const r = a.rng();
+      const jumpy = a.jumpyT > now();
+      a.actT = jumpy ? 1.2 + a.rng() * 1.5 : 4 + a.rng() * 6;
+      const r = jumpy ? 0 : !a.sitting && !onScreen(pos(a)) ? 0.8 : a.rng();       // jumpy: keeps looking round; out of sight: comes into view
       if (r < 0.4) { const t = pos(a).clone().add(U.fwd(c.yaw + (a.rng() - 0.5) * 2.6, _d).multiplyScalar(5)); t.y += 1.2 + (a.rng() - 0.6); c.lookAt(t); }
       else if (r < 0.6) c.lookAt(pl);
       else if (r < 0.72 && !a.sitting) c.gesture('point', { to: pos(a).clone().add(U.fwd(c.yaw + (a.rng() - 0.5), _d).multiplyScalar(2.5)) });
+      else if (r < 0.9 && !a.sitting && a.idleT > 4) a.stroll = strollSpot(a, pl);
       else c.lookAt(null);
     }
     if (a.role === 'chloe' && (a.supplyT -= dt) <= 0 && flat(pos(a), pp) < 6 && !Dialogue.busy) {
@@ -830,17 +848,35 @@ const AI = (() => {
     Dialogue.bark('chloe', cat, { char: c });
     later(1.1, () => { a.busy = null; Play.give(item, 1); Audio.sfx('pickup', { pos: pl.root.position.clone(), vol: 0.6 }); });
   }
+  // remark tags: a line → she walks over to it, looks, says it; no line → a look and a quiet spell, and she keeps walking
   function remarkCheck(a, pl, enemies) {
-    if (a.quietT > 0 || Dialogue.busy || enemies.some(e => flat(pos(e), pl.root.position) < 30)) return;
+    if (a.visit || a.quietT > 0 || Dialogue.busy || enemies.some(e => flat(pos(e), pl.root.position) < 30)) return;
     for (const r of remarks) {
-      if (r.done || r.who !== a.role || flat(pos(a), r.pos) > r.r || flat(pl.root.position, r.pos) > r.r + 6 || (r.cond && !r.cond())) continue;
+      if (r.done || r.who !== a.role || flat(pl.root.position, r.pos) > r.r + 3 || flat(pos(a), r.pos) > r.r + 8 || (r.cond && !r.cond())) continue;
       r.done = true;
-      const t = r.pos.clone().setY(r.pos.y + 0.6);
-      a.char.lookAt(t); a.actT = 6;
-      if (r.text) { Dialogue.say(a.role, r.text, { emote: r.emote, char: a.char }).then(() => a.char.lookAt(null)); if (a.rng() < 0.5) a.char.gesture('point', { to: t }); }
-      else { a.char.emote(r.emote || 'sad', 4); a.quietT = 20; later(2.5, () => a.char.lookAt(null)); }
+      if (r.text) { a.visit = r; return; }
+      a.char.lookAt(r.pos.clone().setY(r.pos.y + 0.6)); a.char.emote(r.emote || 'sad', 4); a.quietT = 20; a.actT = 6;
+      later(2.5, () => a.char.lookAt(null));
       return;
     }
+  }
+  function visit(a, pl) {
+    const r = a.visit, c = a.char, t = _e.copy(r.pos).setY(r.pos.y + 0.6);
+    if (flat(pos(a), pl.root.position) > 12) { a.visit = null; return; }
+    if (r.talking) { halt(a, r.pos); return; }
+    if (!go(a, r.pos, 1.4, Math.min(r.r, 1.5))) return;
+    r.talking = true; halt(a, r.pos); c.lookAt(t.clone()); a.actT = 6; a.stillT = 0;
+    if (a.rng() < 0.5) c.gesture('point', { to: t.clone() });
+    Dialogue.say(a.role, r.text, { emote: r.emote, char: c }).then(() => { c.lookAt(null); a.visit = null; });
+  }
+  // a few steps to somewhere in view while Chase stands about
+  function strollSpot(a, pl) {
+    const g = gridOf(a), pp = pl.root.position;
+    for (let i = 0; i < 8; i++) {
+      const q = _e.copy(pp).add(U.fwd(camYaw() + (a.rng() - 0.5) * 2.2, _d).multiplyScalar(2.5 + a.rng() * 2.5)), s = g ? g.snap(q, new V3()) : q.clone();
+      if (s && slotOk(a, s, pl, 'calm') && onScreen(s)) return s;
+    }
+    return null;
   }
   // in a fight: callouts, thrown bricks and bottles, their own weapon; returns true while it engages up close
   function companionCombat(a, dt, pl, enemies) {
@@ -851,7 +887,9 @@ const AI = (() => {
       for (const e of live) {
         const d = flat(pos(e), pp);
         if (e.type === 'clicker' && d < 14) { Dialogue.bark('chloe', 'clicker', { char: c }); break; }
-        if (d < 11 && (e.v > 1 || e.type === 'human') && !onScreen(pos(e))) { Dialogue.bark('chloe', Math.abs(relDir(pos(e))) > 2.3 ? 'behind' : 'callout', { char: c }); break; }
+        const side = relDir(pos(e)), near = d < 11 && (e.v > 1 || e.type === 'human');                   // she only calls "left" and "behind"
+        if (near && Math.abs(side) > 2.3) { Dialogue.bark('chloe', 'behind', { char: c }); break; }
+        if (near && side < -0.5 && !onScreen(pos(e))) { Dialogue.bark('chloe', 'callout', { char: c }); break; }
         if (d < 5 && flat(pos(e), cp) < 4 && Math.abs(U.wrapAngle(U.yawTo(cp, pos(e)) - c.yaw)) > 2) { chaseBark('behind'); break; }
       }
       if (a.role === 'chloe' && (a.offerT -= 0.6) <= 0 && flat(cp, pp) < 4) { a.offerT = 70 + a.rng() * 50; handOver(a, pl, 'offer', 'bottle'); return false; }
@@ -883,15 +921,16 @@ const AI = (() => {
     return false;
   }
   function throwAt(a, t) {
-    const c = a.char, what = a.wname === 'slingshot' ? null : a.rng() < 0.5 ? 'brick' : 'bottle';
+    const c = a.char, what = a.wname === 'slingshot' ? null : a.rng() < 0.5 ? 'brick' : 'bottle', hand = what && c.held('r') ? 'l' : 'r';
     a.busy = 'throw'; halt(a, pos(t)); c.turnTo(t.char, 0.25);
-    if (what) c.hold(what, 'r');
-    c.gesture(what ? 'swing' : 'fire');
+    if (what) c.hold(what, hand);
+    c.gesture(what ? 'swing' : 'fire', { hand });
     later(what ? 0.35 : 0.2, () => {
       a.busy = null;
-      if (what) c.drop('r', { remove: true });
+      if (what) c.drop(hand, { remove: true });
       if (!t.alive) return;
-      lob(c.point('hand_r', new V3()), chest(t.char, new V3()), 0.5, what || 'stone', p => {
+      Audio.sfx('swing', { pos: pos(a).clone(), vol: 0.4 });
+      lob(c.point('hand_' + hand, new V3()), chest(t.char, new V3()), 0.5, what || 'stone', p => {
         Audio.sfx(what === 'bottle' ? 'bottle_break' : 'brick_hit', { pos: p });
         if (t.alive && flat(pos(t), p) < 1.2) { t.stun(2.6); t.damage(0.5, { type: 'melee', weapon: what || 'stone', from: pos(a).clone(), by: a }); }
         noise(p, 8, 'distraction');
@@ -949,13 +988,10 @@ const AI = (() => {
     pl.yaw = yaw; c.yaw = yaw;
     pos(a).set(pp.x + f.x * 0.42, pos(a).y, pp.z + f.z * 0.42);
     const choke = kind === 'choke', dur = choke ? 2.6 : kind === 'shiv' ? 1.1 : 0.9;
-    pl.gesture(choke ? 'grab' : 'punch', choke ? { hold: true } : { dur: dur * 0.5 });
     c.gesture('struggle', { dur });
     if (a.type === 'human') c.emote('afraid', dur);
-    if (choke) Audio.sfx('gasp', { pos: pos(a).clone(), vol: 0.5 });
-    else { Audio.sfx('stab', { pos: pos(a).clone() }); later(dur * 0.45, () => { pl.gesture('punch', { dur: dur * 0.5 }); Audio.sfx('stab', { pos: pos(a).clone() }); }); }
-    noise(pos(a), choke ? 1.5 : 3, 'melee');
-    return new Promise(res => later(dur, () => { pl.gesture(null); a.busy = null; die(a, { type: kind, silent: true, from: pp.clone() }); res(); }));
+    if (choke) { Audio.sfx('gasp', { pos: pos(a).clone(), vol: 0.5 }); later(0.9, () => c.setMove(0, { crouch: true })); }
+    return new Promise(res => later(dur, () => { a.busy = null; die(a, { type: kind, silent: true, from: pp.clone() }); res(); }));
   }
 
   // ---- hit volumes: a head sphere and a stack of body spheres per character --------------------------------------------------------------------
@@ -983,7 +1019,7 @@ const AI = (() => {
     return best;
   }
 
-  // ---- effects: timers, lobbed objects, fire pools, smoke, tracers, flashes -------------------------------------------------------------------------
+  // ---- effects: timers, lobbed objects, fire pools, tracers, flashes -------------------------------------------------------------------------
   function later(sec, fn) { fx.push({ dur: sec, fn }); }
   function root() { if (!fxRoot) { fxRoot = new THREE.Group(); fxRoot.name = 'ai-fx'; } if (!fxRoot.parent) Engine.scene.add(fxRoot); return fxRoot; }
   function dispose(o) {
@@ -1048,23 +1084,16 @@ const AI = (() => {
   function fire(p, o = {}) {
     const r = o.r ?? 1.8, g = new THREE.Group(), c = U.v3(p).clone();
     g.position.copy(c); root().add(g);
-    const f = Build.fire({ pos: [0, 0, 0], size: r * 0.55, light: false, parent: g });
+    const f = Build.fire({ pos: [0, 0, 0], size: r * 0.55, light: false, smoke: false, parent: g });
     Build.pool({ pos: [0, 0, 0], r: r * 1.4, color: 0xff6a20, opacity: 0.55, parent: g });
     Audio.sfx('fire_whoosh', { pos: c.clone(), vol: 0.8 });
     const snd = Audio.loop('fire', { pos: c.clone(), vol: 0.5 });
     fx.push({ dur: o.dur ?? 4, obj: g, step(k, dt) {
       f.scale.setScalar(k < 0.1 ? 0.4 + k * 6 : k > 0.85 ? (1 - k) / 0.15 : 1);
       const pl = Play.char;
-      if (pl && flat(pl.root.position, c) < r && Math.abs(pl.root.position.y - c.y) < 1.5) Play.damage(22 * diffK() * dt, { from: c, type: 'fire' });
+      if (pl && flat(pl.root.position, c) < r && Math.abs(pl.root.position.y - c.y) < 1.5) Play.damage(22 * dt, 'fire');
       for (const a of list) if (a !== o.by && enemy(a) && flat(pos(a), c) < r) a.damage(1.2 * dt, { type: 'fire', from: c, by: o.by });
     }, end() { snd.stop(0.6); dispose(g); } });
-  }
-  function smoke(p, o = {}) {
-    const s = { pos: U.v3(p).clone(), r: o.r ?? 3.5 }, dur = o.dur ?? 6;
-    smokes.push(s);
-    const m = Build.smoke({ pos: [s.pos.x, s.pos.y, s.pos.z], size: s.r * 1.2, color: 0xc8ccd0, rate: 0.05, count: 30, parent: root() });
-    for (const a of list) if (a.type === 'human' && a.alive && flat(pos(a), s.pos) < s.r) { a.blindT = now() + dur; stun(a, Math.min(4, dur)); }
-    fx.push({ dur, obj: m, end() { smokes.splice(smokes.indexOf(s), 1); dispose(m); } });
   }
   function updateFx(dt) {
     for (let i = fx.length - 1; i >= 0; i--) {
@@ -1080,14 +1109,13 @@ const AI = (() => {
     detectors.length = 0;
     updateFx(dt);
     for (let i = list.length - 1; i >= 0; i--) if (!list[i].char.root.parent) list.splice(i, 1);   // characters disposed elsewhere
-    const pl = Play.char, scene = Director.active;
-    if (pl && !scene && (noiseT -= dt) <= 0) { noiseT = 0.25; if (Play.noiseRadius > 0) noise(pl.root.position, Play.noiseRadius, 'player'); }
+    const pl = Play.char, scene = Director.active || Play.busy === 'death';
     const ref = pl ? pl.root.position : Engine.camera.position;
-    // the closest CONFIG.maxActiveAI agents within CONFIG.aiFreezeDist think (extras last); the rest hold still
-    const key = a => flat(pos(a), ref) + (a.type === 'crowd' ? 500 : 0);
-    const act = list.filter(a => a.alive && !a.companion && flat(pos(a), ref) < CONFIG.aiFreezeDist).sort((x, y) => key(x) - key(y)).slice(0, CONFIG.maxActiveAI);
+    // the closest CONFIG.maxActiveAI agents within CONFIG.aiFreezeDist think; crowd extras (cheap) all move; the rest hold still
+    const near = list.filter(a => a.alive && !a.companion && flat(pos(a), ref) < CONFIG.aiFreezeDist);
+    const act = near.filter(a => a.type !== 'crowd').sort((x, y) => flat(pos(x), ref) - flat(pos(y), ref)).slice(0, CONFIG.maxActiveAI).concat(near.filter(a => a.type === 'crowd'));
     const on = new Set(act);
-    for (const n of noises) for (const a of act) if (enemy(a)) hear(a, n);
+    for (const n of noises) for (const a of act) if (enemy(a) && !a.busy) hear(a, n);
     noises.length = 0;
     const enemies = act.filter(enemy);
     let lvl = 0;
@@ -1125,18 +1153,21 @@ const AI = (() => {
     if (!stealthOn && !fighting && Play.crouched && enemies.some(e => flat(pos(e), ref) < 18)) { stealthOn = true; later(0.8, () => chaseBark('stealth')); }
     if (!enemies.some(e => flat(pos(e), ref) < 30)) stealthOn = false;
     if (fighting) { fightT = now(); combatWas = true; }
-    else if (combatWas && now() - fightT > 3) { combatWas = false; if (list.some(a => a.companion && a.role === 'chloe')) chaseBark('check'); }
+    else if (combatWas && now() - fightT > 3) {                                   // after a fight: Chase checks on her; she stays jumpy
+      combatWas = false;
+      for (const a of list) if (a.companion && a.role === 'chloe') { chaseBark('check'); a.jumpyT = now() + 25; a.char.emote('tense', 12); }
+    }
   }
 
   function drop(a) { if (a.crackle) a.crackle.stop(0.2); if (a.ownChar && !a.char.persistent) a.char.dispose(); }
   function clear() {
     for (let i = list.length - 1; i >= 0; i--) if (!list[i].companion) { drop(list[i]); list.splice(i, 1); }
     for (const e of fx) if (e.obj) dispose(e.obj);
-    fx.length = 0; smokes.length = 0; noises.length = 0; detectors.length = 0; grabber = null; alertLevel = 0;
+    fx.length = 0; noises.length = 0; detectors.length = 0; grabber = null; alertLevel = 0;
   }
   function unloadArea(A) {
     for (let i = list.length - 1; i >= 0; i--) if (list[i].area === A.id && !list[i].companion) { drop(list[i]); list.splice(i, 1); }
-    for (const arr of [remarks, zones]) for (let i = arr.length - 1; i >= 0; i--) if (arr[i].area === A.id) arr.splice(i, 1);
+    for (let i = remarks.length - 1; i >= 0; i--) if (remarks[i].area === A.id) remarks.splice(i, 1);
     for (const [k, r] of routes) if (r.area === A.id) routes.delete(k);
     AINav.drop(A.id);
   }
@@ -1146,11 +1177,10 @@ const AI = (() => {
     A.cover = points => { A.coverPts = (A.coverPts || []).concat(points.map(p => A.w(p))); };
     A.navBounds = (x1, z1, x2, z2) => { A.navBox = [Math.min(x1, x2) + o.x, Math.min(z1, z2) + o.z, Math.max(x1, x2) + o.x, Math.max(z1, z2) + o.z]; };
     A.remark = r => { const R = r.id ? CONTENT.remarks[r.id] : {}; remarks.push({ area: A.id, pos: A.w(r.at), r: r.r ?? 4, text: r.text !== undefined ? r.text : R.text, emote: r.emote || R.emote, who: r.who || 'chloe', cond: r.cond, done: false }); };
-    A.conceal = (x1, z1, x2, z2, k = 0.5, kc = k) => { zones.push({ area: A.id, x1: Math.min(x1, x2) + o.x, z1: Math.min(z1, z2) + o.z, x2: Math.max(x1, x2) + o.x, z2: Math.max(z1, z2) + o.z, k, kc }); };
   }
 
   return {
-    list, spawn, companion, noise, hitTest, takedownTarget, update, clear, unloadArea, extendArea, fire, smoke,
+    list, spawn, companion, noise, hitTest, takedownTarget, update, clear, unloadArea, extendArea, fire,
     listenTargets: (p, r) => list.filter(a => enemy(a) && flat(pos(a), p) < r && (a.type === 'scroller' || a.type === 'clicker' || a.type === 'bloatware' || a.v > 0.3 || a.state === 'combat')),
     byName: n => (list.find(a => a.name === n || a.char.name === n) || {}).char || null,
     nav: { path: (from, to) => { const g = AINav.get(Game.area); return g ? g.path(U.v3(from), U.v3(to)) : null; } },

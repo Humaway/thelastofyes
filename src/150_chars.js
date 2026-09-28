@@ -34,6 +34,7 @@
 //   Body:
 //     c.pose(name, opts) -> Promise   held base pose: stand sit kneel lie crouch carry(=carrying someone) carried dead hands_up
 //                                      phone(=infected/crowd: phone held to face, thumb swiping) phone_ear aim sit_car drive
+//                                      sit_car_turn (front passenger twisted round to his right to see the back seat; use root yaw ~0)
 //     c.gesture(name, opts) -> Promise one-shot upper-body overlay: point shrug wave_off hand_on_shoulder fold_arms rub_face
 //                                      hands_on_hips push_glasses pull_collar rub_palm click_cutter wipe_tears cover_mouth
 //                                      hand_over hold_hands lean_railing head_on_shoulder cpr punch tackle swing fire recoil
@@ -59,13 +60,18 @@
 //   c.hold(prop, hand, {light:true}) gives a torch a real SpotLight; c.hold returns the prop; c.held(hand) -> prop;
 //   c.drop(hand, {remove}) returns the prop, left falling to the ground in the current area unless remove.
 //   Extra props: phone_cracked counter hammer slingshot flare_gun knife syringe scalpel rag coverage_map bowl chips bottle
-//     brick pipe machete; scanner.userData.setText('BADGE: 14').
+//     brick pipe machete handset; scanner.userData.setText('BADGE: 14'); handset (landline, fits phone_ear): its coiled cord
+//     hangs free, or runs to handset.userData.cordTo = Object3D | world Vector3 (the phone's base) while it is held.
 //   c.phoneGlow(on, {light}) — light:true adds a small blue PointLight at the screen (heroes only; budget).
 //   c.decal kinds also: 'feed_eyes' (red, wet, unblinking — the Update taking hold), 'bruise'.
 //   c.setPart(name, state): 'sweatband' 'up'|'down'; 'jacket' | 'glasses' | 'cap' | 'goggles' | 'beanie' | 'lanyard' |
 //     'backpack' | 'hood' true/false (goggles also 'up') — rebuilds the body mesh.
 //   c.outfit(variant) — e.g. chloe 'pyjamas', chase 'shirt' (jacket off); c.parts (current part states).
 //   c.infected (scroller/lurker/clicker/bloatware defs) · c.persistent (flag honoured by AI.clear)
+//   pose('aim', {at: Vector3}) shoulders a long gun (a pistol at arm's length) and turns the hand so the barrel points at
+//     `at` (else straight ahead); the left hand takes the fore-end. c.ikPole = {L|R: [x,y,z] chest space} bends an IK'd elbow.
+//   c.lookBody (0..1, default 1): the share of lookAt turned by chest, neck and head; the eyes take the rest.
+//   Named characters cast a soft contact shadow on the floor under them (stretched along a lying body).
 // ============================================================================
 const Chars = (() => {
   const all = [];
@@ -83,7 +89,7 @@ const Chars = (() => {
     // ---- Prologue ---------------------------------------------------------------------------------
     chase_young: { name: 'Chase', H: 1.83, sex: 'm', age: 34, named: true, tics: ['rub_palm'], scar: true,
       build: { sh: 1.12, ch: 1.06, wa: 0.97, musc: 0.35, arm: 1.05, leg: 1.04 },
-      head: { jaw: 1.1, chin: 1.1, width: 1.0, brow: 1.25, nose: 1.02, noseBump: 0.5, cheek: 1.1, lips: 0.95, hairline: 0.07 },
+      head: { jaw: 1.06, chin: 1.05, width: 1.03, brow: 1.2, nose: 1.0, noseBump: 0.3, cheek: 1.08, lips: 1.02, hairline: 0.07 },
       skin: '#d6a383', iris: '#5d7282', stubble: 0.12, rosy: 0.45, browThick: 1.1,
       hair: { style: 'side_part', color: '#3e2c20', part: 0.4 },
       outfit: [{ k: 'polo', color: POLO_YELLOW, tuck: true, logo: true, badge: 'CHASE — Senior Consultant — Ask me about upgrading!', fab: 'pique' },
@@ -106,7 +112,7 @@ const Chars = (() => {
         { k: 'shoes', style: 'fluffy', color: '#f3c9d6' }] },
     customer: { name: 'Customer', H: 1.6, sex: 'f', age: 74, tics: [], stoop: 0.35,
       build: { sh: 0.92, ch: 1.05, wa: 1.15, hi: 1.05, fat: 0.3, belly: 0.35, bust: 0.8, arm: 0.95 },
-      head: { jaw: 0.95, chin: 0.9, nose: 1.02, cheek: 0.9, full: 0.4, lips: 0.8, hairline: 0.07 },
+      head: { jaw: 0.9, chin: 0.86, nose: 1.0, cheek: 0.92, full: 0.45, lips: 0.8, hairline: 0.07 },
       skin: '#eac2a8', iris: '#6a7a86', rosy: 0.8, tired: 0.4, browColor: '#b8b0a8', browThick: 0.6,
       hair: { style: 'perm', color: '#dcd8d2', grey: 0.9 },
       outfit: [{ k: 'shirt', color: '#e8e0cf', fab: 'cotton', tuck: true, pocket: false }, { k: 'cardigan', color: '#8e7c9c' },
@@ -310,6 +316,7 @@ const Chars = (() => {
     look.faceRes = look.faceRes || (look.named ? 512 : def && def.gen ? 256 : 512);
     look.fem = look.fem ?? (look.sex === 'f' ? 1 : 0);
     if (look.hair && look.head && look.head.hairline != null && look.hair.line == null) look.hair = Object.assign({}, look.hair, { line: look.head.hairline });
+    if (look.hair && look.hair.temple == null && !look.fem && !look.child) look.hair = Object.assign({}, look.hair, { temple: 0.004 });   // men's hairlines rise at the temples
     return look;
   }
 
@@ -357,6 +364,7 @@ const Chars = (() => {
     };
     Object.assign(c, API);
     setupSprings(c);
+    if (!look.gen) contact(c);
     if (look.inf) CharInf.attach(c);
     if (look.hold) c.hold(look.hold, 'r');
     if (look.slung) { const p = CharProps.P[look.slung](); p.position.set(0.02 * c.D.s, 0.02 * c.D.s, -0.2 * c.D.s); p.rotation.set(-Math.PI / 2 + 0.1, 0.7, 0); c.bones.chest.add(p); c.slung = p; }
@@ -507,6 +515,37 @@ const Chars = (() => {
   }
 
   // ---------------------------------------------------------------------------------------------
+  // contact shadow: a soft dark ellipse on the floor under each near character, stretched along a lying body, so feet,
+  // knees and backs sit on the ground under any light (hidden while carried, on shoulders, mounted or far away)
+  let contactGeo = null, contactMat = null;
+  function contact(c) {
+    if (!contactGeo) {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+      const g = cv.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gr.addColorStop(0, 'rgba(0,0,0,0.62)'); gr.addColorStop(0.45, 'rgba(0,0,0,0.38)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+      const tex = new THREE.CanvasTexture(cv); tex.userData.shared = true;
+      contactGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2); contactGeo.userData.shared = true;
+      contactMat = new THREE.MeshBasicMaterial({ map: tex, color: 0x000000, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+      contactMat.userData.shared = true;
+    }
+    const m = new THREE.Mesh(contactGeo, contactMat); m.renderOrder = 1; m.matrixAutoUpdate = false;
+    c.root.add(m); c.contact = m;
+  }
+  const _h = new V3(), _f = new V3(), _g = new V3(), _ci = new THREE.Matrix4();
+  function contactUpdate(c) {
+    const lifted = c.pairOf && c.pairOf.pair && (c.pairOf.pair.mode === 'carry' || c.pairOf.pair.mode === 'shoulders');
+    const m = c.contact, show = c.lod < 2 && !lifted && !c.mount;
+    m.visible = show; if (!show) return;
+    _ci.copy(c.root.matrixWorld).invert();
+    c.bones.head.getWorldPosition(_h).applyMatrix4(_ci); c.bones.footL.getWorldPosition(_f).applyMatrix4(_ci); c.bones.footR.getWorldPosition(_g).applyMatrix4(_ci);
+    _f.add(_g).multiplyScalar(0.5);
+    const dx = _h.x - _f.x, dz = _h.z - _f.z, L = Math.hypot(dx, dz), low = clamp(1 - (_h.y - 0.25) / 1.2, 0.35, 1);
+    const gy = (c.pairOf ? c.pairOf.root.position.y : c.root.position.y) - c.root.position.y;   // a follower's root is not on the floor
+    m.position.set((_h.x + _f.x) / 2, gy + 0.012, (_h.z + _f.z) / 2); m.rotation.set(0, Math.atan2(dx, dz), 0);
+    m.scale.set(0.5 * c.D.s * (0.8 + 0.2 * low), 1, (L + 0.5) * c.D.s); m.updateMatrix();
+  }
+
   const _cam = new V3();
   function update(dt) {
     Engine.camera.getWorldPosition(_cam);
@@ -527,6 +566,8 @@ const Chars = (() => {
       if (!c.root.visible || c.quad || c.frozen) continue;
       c.root.updateMatrixWorld(true);
       Gest.post(c, dt);
+      if (c.contact) contactUpdate(c);
+      if (c.B.cards) c.B.cards.visible = c.B.head.visible;               // the hair cards go with the head (hidden for a POV)
       if (c.lod < 2) Anim.springs(c, dt);
       CharFace.update(c.face, dt, c.gaze, c.lod);
       CharProps.update(c, dt);

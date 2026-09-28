@@ -6,6 +6,8 @@
 //   CharHair.hair(ctx)  reads ctx.look.hair = { style, color, len, vol, part, seed, grey } and ctx.look.beard
 //   CharHair.headSurf(ctx, phi, y, off, out, nrm?) · CharHair.hairline(h, |phi|) · CharHair.clump(ctx, pts, side, o)
 //   CharHair.thick(look) -> hair height above the scalp on top (m, head scale), for hats
+//   CharHair.cardMesh(B)  heroes: alpha-cut strand cards over the shell (soft hairline, locks, a broken silhouette), one
+//                         Mesh on the head bone rebuilt with the body (ctx.B.cardGeo from CharHair.hair)
 // Styles: crop side_part messy short buzz bald bob ponytail tied_back buns curly perm long receding comb
 // ============================================================================
 const CharHair = (() => {
@@ -19,7 +21,7 @@ const CharHair = (() => {
   // hairline height (head space) by |phi|
   function hairline(h, aphi) {
     const top = h.line ?? 0.066, rec = h.recede || 0, temple = h.temple ?? 0.022;
-    const K = [[0, top + rec * 0.015], [0.45, top - 0.004 + rec * 0.02], [0.85, top - temple + rec * 0.035], [1.18, 0.012], [1.33, -0.012 + (h.burns ?? 0)], [1.42, -0.005], [1.55, 0.024], [1.75, 0.02], [2.1, -0.035], [2.6, -0.052], [Math.PI, -0.058]];
+    const K = [[0, top + rec * 0.015], [0.45, top - 0.004 + rec * 0.02], [0.85, top - temple + rec * 0.035], [1.18, 0.012], [1.33, -0.012 + (h.burns ?? 0)], [1.42, -0.005], [1.55, 0.024], [1.75, 0.02], [2.1, -0.04], [2.6, -0.063], [Math.PI, -0.072]];
     let i = 0; while (i < K.length - 2 && aphi > K[i + 1][0]) i++;
     return lerp(K[i][1], K[i + 1][1], sstep(K[i][0], K[i + 1][0], aphi));
   }
@@ -27,13 +29,13 @@ const CharHair = (() => {
   // shell height above the scalp (m, head scale) by |phi| a, t (0 hairline .. 1 crown), phi
   const VOL = {
     buzz: () => 0.0014, crop: (a, t) => 0.004 + 0.004 * t, receding: (a, t) => 0.0035 + 0.003 * t,
-    side_part: (a, t, ph, h) => 0.005 + 0.011 * sstep(0.1, 0.7, t) * (1 - 0.45 * sstep(1.0, 2.4, a)) + 0.006 * Math.exp(-a * a / 0.5) * sstep(0.08, 0.4, t) * (1 - sstep(0.6, 1, t)) + 0.004 * sstep(0.4, 1, t) * Math.max(0, -Math.sin(ph - (h.part ?? 0.35))),
+    side_part: (a, t, ph, h) => 0.004 + 0.01 * sstep(0.1, 0.7, t) * (1 - 0.55 * sstep(0.8, 2.2, a)) + 0.007 * Math.exp(-a * a / 0.4) * sstep(0.08, 0.4, t) * (1 - sstep(0.6, 1, t)) + 0.004 * sstep(0.4, 1, t) * Math.max(0, -Math.sin(ph - (h.part ?? 0.35))),   // lift at the front, close at the temples
     short: (a, t) => 0.006 + 0.009 * sstep(0.2, 0.9, t), messy: (a, t) => 0.009 + 0.012 * sstep(0.15, 0.85, t),
     comb: (a, t) => 0.007 + 0.011 * sstep(0.15, 0.8, t) * (1 - 0.4 * sstep(1.5, 2.6, a)),
     bob: (a, t) => 0.009 + 0.008 * sstep(0.1, 0.8, t), ponytail: (a, t) => 0.004 + 0.002 * t, tied_back: (a, t) => 0.0045 + 0.002 * t, buns: () => 0.004,
     curly: (a, t) => 0.02 + 0.01 * t, perm: (a, t) => 0.014 + 0.006 * t, long: (a, t) => 0.008 + 0.004 * t,
   };
-  const HATS = ['cap', 'beanie', 'helmet', 'hood_up'];
+  const HATS = ['cap', 'beanie', 'helmet', 'hood_up'], SHORT = { crop: 1, side_part: 1, messy: 1, short: 1, receding: 1, comb: 1 };
   const thick = look => { const h = look.hair; if (!h || h.style === 'bald') return 0.001; return VOL[h.style](0.3, 0.9, 0, h) * (h.vol ?? 1) + (h.style === 'curly' || h.style === 'perm' ? 0.006 : 0.002); };
 
   function hair(ctx) {
@@ -46,15 +48,19 @@ const CharHair = (() => {
     A.alloc('hair_cap', 512, 256, Object.assign({ cap: true, part: st === 'side_part' || st === 'comb' ? h.part ?? 0.35 : null }, spec));
     A.alloc('hair', 256, 256, spec);
     const H = Object.assign({}, h, st === 'receding' ? { recede: 1 } : {});
-    const vf = (a, t, ph) => VOL[st](a, t, ph, H) * (h.vol ?? 1) * (hatted ? 0.6 : 1);
-    const C = { ctx, h: H, R: rng(h.seed ?? 7), vf, hatted };
+    const taper = SHORT[st] ? (a, t) => 1 - 0.6 * sstep(1.4, 2.5, a) * (1 - sstep(0.15, 0.6, t)) : () => 1;   // short cuts: close at the nape and over the ears
+    const vf = (a, t, ph) => VOL[st](a, t, ph, H) * (h.vol ?? 1) * (hatted ? 0.6 : 1) * taper(a, t);
+    const C = { ctx, h: H, R: rng(h.seed ?? 7), vf, hatted, carded: CharBody.LOD >= 1 && !hatted && !!FLOW[st] };
     shell(C);
+    if (C.carded) cards(C);
     if (st === 'buzz') return;
     const extra = { bob, ponytail, tied_back: tiedBack, buns, curly: curls, long: longHair }[st];   // short cuts are the shell alone
     if (extra) extra(C);
   }
 
-  // Scalp shell from the hairline to the crown, thinning to nothing at the hairline so it meets the painted edge.
+  // Scalp shell from the hairline to the crown, thinning to nothing at the hairline so it meets the painted edge (over a
+  // longer rise at the sides, so short hair lies close over the ears).
+  const edgeK = a => 0.22 + 0.14 * sstep(0.9, 1.6, a);
   function shell(C) {
     const { ctx, h, vf } = C, { mb, A } = ctx, r = A.R.hair_cap, rows = lodN(15), cols = lodN(64), p = new V3();
     const st = h.style, part = h.part ?? 0.35, seed = C.R() * 100, curl = st === 'curly' || st === 'perm';
@@ -66,14 +72,14 @@ const CharHair = (() => {
     surf(mb, rows, cols, (i, j) => {
       const s = j / (cols - 1), phi = s * TAU - Math.PI, t = i / (rows - 1), a = Math.abs(phi);
       const tongue = fringeAt ? fringeAt(phi) : 0;                          // messy/short cuts: the front edge falls in uneven locks
-      const y = lerp(hairline(h, a) - tongue, 0.126, Math.pow(t, 0.85)), edge = sstep(0, 0.14, t);
+      const y = lerp(hairline(h, a) - tongue, 0.126, Math.pow(C.carded ? 0.1 + 0.9 * t : t, 0.85)), edge = sstep(0, edgeK(a), t);   // carded: the painted scalp and the cards make the hairline
       let off = vf(a, t, phi) * edge;
       if (parted && a < 1.5) off -= 0.0022 * gauss(phi - part, 0.05) * sstep(0.1, 0.3, t) * (1 - sstep(0.75, 0.95, t));
       if (curl) off += (st === 'perm' ? 0.004 : 0.007) * edge * (0.5 + 0.5 * Math.sin(phi * (st === 'perm' ? 22 : 13) + seed) * Math.sin(t * (st === 'perm' ? 26 : 15) + phi * 3));
       else off += edge * (0.0009 * vnoise(phi * 9 + seed, t * 3) + (st === 'messy' ? 0.0035 * vnoise(phi * 5 + seed, t * 4 + seed) : 0));
       headSurf(ctx, phi, y, off + 0.0005, p);
       const [u, v] = A.uv(r, s, t);
-      const fade = st === 'buzz' ? 0.5 : sstep(0.07, 0, t) * 0.4;           // the front edge melts into the skin (buzz cuts show scalp throughout)
+      const fade = st === 'buzz' ? 0.5 : C.carded ? 0 : sstep(0.07, 0, t) * 0.4;   // the front edge melts into the skin (buzz cuts show scalp throughout)
       return { p: p.clone(), u, v, w: W1('head'), c: new THREE.Color(0.85, 0.85, 0.85).lerp(toSkin, fade * (a < 1.4 ? 1 : 0.6)), r: curl ? 0.8 : 0.7 };
     }, { wrap: true, rough: 0.7 });
   }
@@ -97,6 +103,105 @@ const CharHair = (() => {
     }, { wrap: true, rough: 0.7 });
   }
   const shade = (R, k = 0.1) => { const v = 1 - k + R() * k * 2; return new THREE.Color(v, v, v); };
+
+  // ---- strand cards -------------------------------------------------------------------------------------
+  // Each card is a ribbon lying on the shell along the style's flow, textured with alpha-cut strands. FLOW[style](phi, t, R)
+  // -> card specs: roots (phi, t) with a direction in (phi, t) per step; 'up' cards grow from the hairline toward the crown,
+  // 'fall' cards from the crown down the sides and back, 'to' cards toward a point (a tie or a bun).
+  const FLOW = {
+    side_part: h => ({ front: 70, fall: 70, sweep: (phi, t) => (phi < (h.part ?? 0.35) ? -1 : 0.8) * (0.4 + 0.9 * t), lift: 0.0025 }),
+    comb: h => ({ front: 60, fall: 60, sweep: (phi, t) => (phi < (h.part ?? 0.35) ? -0.6 : 0.5) * (0.3 + 0.6 * t), lift: 0.002 }),
+    short: () => ({ front: 60, fall: 70, sweep: phi => 0.25 * Math.sign(phi), lift: 0.002 }),
+    crop: () => ({ front: 45, fall: 60, sweep: phi => 0.2 * Math.sign(phi), lift: 0.0012, len: 0.6 }),
+    receding: () => ({ front: 30, fall: 60, sweep: phi => 0.2 * Math.sign(phi), lift: 0.0012, len: 0.6 }),
+    messy: () => ({ front: 80, fall: 80, sweep: (phi, t, R) => (R() - 0.5) * 1.6, lift: 0.004, spike: 1 }),
+    ponytail: () => ({ front: 90, fall: 40, to: [Math.PI, 0.02], lift: 0.0012 }),
+    tied_back: () => ({ front: 80, fall: 40, to: [Math.PI, 0.02], lift: 0.0012 }),
+    buns: () => ({ front: 90, fall: 50, to: [2.25, 0.098], lift: 0.0012 }),
+    bob: h => ({ front: 40, fall: 90, sweep: phi => (phi < (h.sweep ?? 0.35) ? -0.5 : 0.5), lift: 0.0025 }),
+    long: h => ({ front: 40, fall: 90, sweep: phi => (phi < (h.sweep ?? 0.35) ? -0.5 : 0.5), lift: 0.0025 }),
+  };
+  function cards(C) {
+    const { ctx, h, R, vf } = C, { D, J } = ctx, F = FLOW[h.style](h), hs = D.hs, p = new V3(), n = new V3(), q = new V3();
+    const yAt = (phi, t) => { const y0 = hairline(h, Math.abs(phi)); return t < 0 ? y0 + t * (0.126 - y0) : lerp(y0, 0.126, Math.pow(Math.min(t, 1), 0.85)); };
+    const at = (phi, t, lift, out, nrm) => { const a = Math.abs(phi), ts = clamp((t - 0.1) / 0.9, 0, 1); return headSurf(ctx, phi, yAt(phi, t), vf(a, ts, phi) * sstep(0, edgeK(a), ts) + lift, out, nrm); };   // on the shell (which starts at t 0.1)
+    const pos = [], nor = [], uv = [], col = [], idx = [];
+    const card = (phi, t, dir, L, w, lift, tone, tMin = -0.1) => {
+      const N = 7, seg = L * hs / (N - 1), pts = [], nrm = [];
+      let scale = 0;
+      for (let k = 0; k < N; k++) {
+        const lk = lift * (1 + k / (N - 1) * (F.spike ? 1.8 : 0.6));
+        at(phi, t, lk, p, n); pts.push(p.clone()); nrm.push(n.clone());
+        const [dp, dt] = dir(phi, t, k);                                          // step so the 3D segment is ~seg long (scale probed once)
+        if (!k) { at(phi + dp * 0.05, t + dt * 0.05, lk, q); scale = 0.05 / Math.max(1e-5, q.distanceTo(p)); }
+        phi += dp * seg * scale; t += dt * seg * scale;
+        if (t > 0.97 || t < tMin) { if (k < 2) return; break; }
+      }
+      const n0 = pos.length / 3, u0 = Math.floor(R() * 4) / 4, tilt = (R() - 0.5) * 0.55, Tn = new V3(), B = new V3(), M = pts.length;
+      for (let k = 0; k < M; k++) {
+        Tn.subVectors(pts[Math.min(M - 1, k + 1)], pts[Math.max(0, k - 1)]).normalize();
+        B.crossVectors(Tn, nrm[k]).normalize().multiplyScalar(Math.cos(tilt)).addScaledVector(nrm[k], Math.sin(tilt));
+        const ww = w * hs * (1 - 0.55 * (k / (M - 1)) ** 2) * 0.5, v = k / (M - 1);
+        for (const sd of [-1, 1]) {
+          const c = pts[k].clone().addScaledVector(B, sd * ww).sub(J.head);
+          pos.push(c.x, c.y, c.z); nor.push(nrm[k].x, nrm[k].y, nrm[k].z); uv.push(u0 + (sd > 0 ? 0.25 : 0), v); col.push(tone, tone, tone);
+        }
+        if (k) { const a = n0 + (k - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      }
+    };
+    const len = F.len ?? 1;
+    const toward = (phi, t) => {                                              // direction toward F.to (both sides mirror to the tie)
+      const tp = F.to[0] * (F.to[0] < 3 ? Math.sign(phi) || 1 : 1), ty = F.to[1];
+      if (Math.abs(phi) < 1.1 && t < 0.85) return [0.2 * Math.sign(U.wrapAngle(tp - phi)), 1];   // the front is drawn straight back over the top
+      return [U.wrapAngle(tp - phi), (ty - yAt(phi, t)) / Math.max(0.02, 0.126 - hairline(h, Math.abs(phi)))];
+    };
+    // front: from just in front of the hairline, over the top
+    for (let i = 0; i < F.front; i++) {
+      const phi = (R() * 2 - 1) * (F.to ? 1.55 : 1.3), t = (F.to ? 0.01 : -0.06) + R() * 0.14, sw = F.sweep ? F.sweep(phi, t, R) : 0;   // hair drawn back starts at the hairline
+      const dir = F.to ? (ph, tt) => toward(ph, tt) : (ph, tt) => [F.sweep ? F.sweep(ph, tt, R) * 0.5 + sw * 0.5 : 0, 1];
+      card(phi, t, dir, (0.05 + R() * 0.05) * len, 0.012 + R() * 0.008, F.lift * (0.5 + R()), 0.85 + R() * 0.3);
+    }
+    // fall: from the crown down the sides and back (tie styles: along the head toward the tie)
+    for (let i = 0; i < F.fall; i++) {
+      const phi = (R() * 2 - 1) * Math.PI, a = Math.abs(phi), t = F.to ? 0.1 + R() * 0.5 : 0.35 + R() * 0.55;
+      if (!F.to && a < 1.0 && R() < 0.7) continue;
+      const dir = F.to ? (ph, tt) => toward(ph, tt) : (ph, tt) => [F.sweep ? F.sweep(ph, tt, R) * 0.3 : 0, -1];
+      card(phi, t, dir, (0.05 + R() * 0.05) * len, 0.013 + R() * 0.008, F.lift * (0.5 + R()), 0.8 + R() * 0.3, SHORT[h.style] ? 0.06 : -0.05);   // short cuts end neatly above the ears
+    }
+    if (!pos.length) return;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
+    ctx.B.cardGeo = g;
+  }
+  // strand texture: four lock columns of fine strands (alpha-cut), roots at v = 0, thinning to the tips; cached per colour
+  const cardMats = new Map();
+  function cardMat(h) {
+    const key = h.color + '|' + (h.grey || 0) + '|' + h.style;
+    if (cardMats.has(key)) return cardMats.get(key);
+    const W = 256, Hc = 256, cv = document.createElement('canvas'); cv.width = W; cv.height = Hc;
+    const g = cv.getContext('2d'), R = rng(key.length * 97 + 5), { rgbOf, css, mix, mul } = CharPaint, base = rgbOf(h.color), grey = h.grey || 0;
+    for (let lock = 0; lock < 4; lock++) for (let i = 0; i < 70; i++) {
+      const cx = (lock + 0.5) / 4 * W, x = cx + (R() + R() + R() - 1.5) * W / 4 * 0.42, y0 = Hc * (1 - 0.14 * R()), end = Hc * (0.45 + 0.55 * Math.sqrt(R()));   // staggered roots: no hard card edge
+      const c0 = R() < grey ? mix(base, [210, 208, 202], 0.85) : mul(base, 0.75 + R() * 0.5);
+      const gr = g.createLinearGradient(0, y0, 0, Hc - end);
+      gr.addColorStop(0, css(mul(c0, 0.7))); gr.addColorStop(0.45, css(mix(c0, [255, 240, 220], 0.12 + R() * 0.12))); gr.addColorStop(1, css(c0));
+      g.strokeStyle = gr; g.lineWidth = 1 + R() * 1.6; g.beginPath(); g.moveTo(x, y0);
+      g.bezierCurveTo(x + (R() - 0.5) * 10, Hc - end * 0.35, x + (R() - 0.5) * 14, Hc - end * 0.7, x + (R() - 0.5) * 16, Hc - end); g.stroke();
+    }
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4; tex.userData.shared = true;
+    const m = new THREE.MeshStandardMaterial({ map: tex, vertexColors: true, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.62, metalness: 0 });
+    m.userData.shared = true;
+    cardMats.set(key, m);
+    return m;
+  }
+  // (re)attach the card mesh to the head bone after the body geometry was generated
+  function cardMesh(B) {
+    if (B.cards) { B.cards.parent.remove(B.cards); B.cards.geometry.dispose(); B.cards = null; }
+    if (!B.cardGeo) return;
+    const m = new THREE.Mesh(B.cardGeo, cardMat(B.look.hair)); m.receiveShadow = true; m.frustumCulled = false;
+    B.bones.head.add(m); B.cards = m; B.cardGeo = null;
+  }
 
   // ---- styles -------------------------------------------------------------------------------------
   // hair falling from the shell's edge as one smooth curtain between phi0..phi1 down to head-space y1,
@@ -233,5 +338,5 @@ const CharHair = (() => {
     }
   }
 
-  return { hair, headSurf, hairline, clump, thick };
+  return { hair, headSurf, hairline, clump, thick, cardMesh };
 })();

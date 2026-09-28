@@ -2,7 +2,7 @@
 // Barks (spec §17) — CONTENT.barks[set][category] = [lines], played through Dialogue.bark by AI. Owned by: systems (AI).
 // Categories used by AI: enemies spot · search · combat · flank · death (a friend went down) · plead (wounded, cornered);
 // Scrollers idle · chase; Chloe callout (enemy on Chase's left) · behind · down · supplies · offer · gross · clicker ·
-// rescue · nice · stealth; Chase stealth · behind · follow · reload · kill · check. Chase's set reads G.flags.saidChloe:
+// rescue · nice · stealth · stealthInfected; Chase stealth · behind · follow · reload · kill · check. Chase's set reads G.flags.saidChloe:
 // from scene 6.10 on he uses her name and never says "Trainee" again.
 // Enemies call each other by titles and slang, never names.
 // ============================================================================
@@ -33,7 +33,8 @@ Object.assign(CONTENT.speakers, {
     clicker: [{ text: 'Clicker, clicker, clicker—', emote: 'afraid' }],
     rescue: [{ text: 'Get OFF him!', emote: 'angry' }],
     nice: [{ text: 'Nice!', emote: 'smile' }],
-    stealth: ["I'll stay behind you.", 'Why are they so slow? Good. Stay slow.', { text: "Don't breathe. Don't breathe.", emote: 'afraid' }],
+    stealth: ["I'll stay behind you.", { text: "Don't breathe. Don't breathe.", emote: 'afraid' }],
+    stealthInfected: ["I'll stay behind you.", 'Why are they so slow? Good. Stay slow.', { text: "Don't breathe. Don't breathe.", emote: 'afraid' }],
   };
   B.doorknocker = {
     speaker: 'doorknocker',

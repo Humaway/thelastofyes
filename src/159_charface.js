@@ -110,6 +110,7 @@ const CharFace = (() => {
         .replace('#include <skinnormal_vertex>', '#include <skinnormal_vertex>\nvObjN = objectNormal;')
         .replace('#include <shadowmap_vertex>', SHADOW_V);
       sh.fragmentShader = CharBody.softShadow(sh.fragmentShader).replace('#include <common>', '#include <common>\n' + EYE_GLSL)
+        .replace('#include <lights_physical_pars_fragment>', SKIN_GLSL)
         .replace('#include <map_fragment>', MAP_GLSL)
         .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.1, eyeIn);')
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += eyeGlint + uGlow * diffuseColor.rgb * pow(max(dot(normalize(vObjN), uGlowDir), 0.0), 1.5);');
@@ -119,11 +120,20 @@ const CharFace = (() => {
   }
   // the face looks up shadows 10 cm off its surface: no blotchy self-shadowing from the nose, brow or hair at
   // shadow-map resolution, while walls and roofs still shade it
-  const SHADOW_V = THREE.ShaderChunk.shadowmap_vertex.replace(/(\w+\[ i \])\.shadowNormalBias/g, '($1.shadowNormalBias + 0.1)');
+  // (fading out down the neck, which meets the body's neck and must shade like it)
+  const SHADOW_V = THREE.ShaderChunk.shadowmap_vertex.replace(/(\w+\[ i \])\.shadowNormalBias/g, '($1.shadowNormalBias + 0.1 * smoothstep(0.2, 0.3, uv.y))');
+  // skin: light wraps past the terminator, red furthest (scattering under the skin), so the shadow side of a face
+  // turns warm instead of grey; the eyes (eyeIn) stay plain Lambert
+  const SKIN_GLSL = THREE.ShaderChunk.lights_physical_pars_fragment.replace(
+    'reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );',
+    `vec3 wrapW = vec3(0.42, 0.2, 0.13) * (1.0 - skinEye) * smoothstep(0.2, 0.3, vMapUv.y);   // (fading out down the neck, where the body's plain skin takes over)
+    vec3 wrapNL = clamp((vec3(dot(geometryNormal, directLight.direction)) + wrapW) / (1.0 + wrapW), 0.0, 1.0);
+    reflectedLight.directDiffuse += wrapNL * directLight.color * BRDF_Lambert( material.diffuseColor );`);
   const EYE_GLSL = `
     varying vec3 vObjN;
     uniform vec4 uEyeL, uEyeR, uLid, uEyeP; uniform vec2 uGaze; uniform vec3 uIris, uSclera, uLash, uGlow, uGlowDir;
     uniform float uWet, uRed, uFeed, uBlind;
+    float skinEye = 0.0;                                             // eye coverage of this fragment (read by the skin lighting)
     // returns rgb in .rgb, coverage in .a; glint -> g
     vec4 eyeCol(vec2 uv, vec4 E, float top, float bot, float side, out float glint, out float lashA) {
       vec2 p = (uv - E.xy) / E.zw; p.x *= side;                       // +x lateral, units = eye half-width
@@ -175,7 +185,7 @@ const CharFace = (() => {
       diffuseColor.rgb = mix(diffuseColor.rgb, eL.rgb, eL.a);
       diffuseColor.rgb = mix(diffuseColor.rgb, eR.rgb, eR.a);
       diffuseColor.rgb = mix(diffuseColor.rgb, uLash, clamp(l1 + l2, 0.0, 1.0) * 0.92);
-      eyeIn = max(eL.a, eR.a);
+      eyeIn = max(eL.a, eR.a); skinEye = eyeIn;
       eyeGlint = vec3(g1 + g2) * (0.35 + uWet * 0.4);
     }`;
 
@@ -239,16 +249,17 @@ const CharFace = (() => {
       if (age > 36) for (let k = 0; k < 3; k++) line(g, f, [[X(ex + 0.017), 0.003 - k * 0.0045], [X(ex + 0.025), 0.005 - k * 0.0065]], 0.0006, deep(skin, 0.65), 0.2 * clamp((age - 34) / 25, 0, 1), 0.0003);
       // nose: side shadow, alar crease, nostril, cheekbone light, mouth corner, nasolabial fold
       soft(g, f, X(0.0105), -0.012, 0.004, 0.014, deep(skin, 0.75), 0.25);
-      line(g, f, quad([X(0.0165 * nW), tY + 0.0045], [X(0.0205 * nW), tY - 0.002], [X(0.0155 * nW), tY - 0.0078]), 0.0014, deep(skin, 0.55), 0.5, 0.0005);
-      soft(g, f, X(0.0195 * nW), tY - 0.004, 0.0035, 0.005, deep(skin, 0.6), 0.35);
-      const [NX, NY] = P(f, X(0.0066 * nW), tY - 0.0072);
-      g.save(); g.translate(NX, NY); g.rotate(sd * 0.4); g.scale(1, 0.48);
-      const nr = px(f, 0.0036), gn = g.createRadialGradient(0, 0, 0, 0, 0, nr); gn.addColorStop(0, 'rgba(40,16,14,0.9)'); gn.addColorStop(0.55, 'rgba(50,20,16,0.6)'); gn.addColorStop(1, 'rgba(60,24,20,0)');
+      line(g, f, quad([X(0.0148 * nW), tY + 0.004], [X(0.0186 * nW), tY - 0.0015], [X(0.0142 * nW), tY - 0.0072]), 0.0011, deep(skin, 0.6), 0.4, 0.0005);   // alar crease
+      soft(g, f, X(0.0172 * nW), tY - 0.0035, 0.003, 0.0045, deep(skin, 0.65), 0.28);
+      soft(g, f, X(0.0112 * nW), tY - 0.0015, 0.004, 0.0035, mix(skin, [205, 95, 90], 0.3), 0.3);                 // the alae flush a little
+      const [NX, NY] = P(f, X(0.0062 * nW), tY - 0.0082);                    // nostril: a warm shadowed slit, only the underside is dark
+      g.save(); g.translate(NX, NY); g.rotate(sd * 0.35); g.scale(1, 0.42);
+      const nr = px(f, 0.003), gn = g.createRadialGradient(0, 0, 0, 0, 0, nr); gn.addColorStop(0, 'rgba(72,30,26,0.62)'); gn.addColorStop(0.6, 'rgba(95,42,36,0.3)'); gn.addColorStop(1, 'rgba(110,50,42,0)');
       g.fillStyle = gn; g.fillRect(-nr, -nr, nr * 2, nr * 2); g.restore();
       soft(g, f, X(0.046), -0.015, 0.014, 0.006, lite(skin, 0.3), 0.22);
       soft(g, f, X(mW + 0.0015), mY + 0.0005, 0.0032, 0.003, deep(skin, 0.55), 0.45);
       const fold = [[X(0.0195 * nW), tY - 0.0005], [X(0.0275), (tY + mY) / 2 - 0.004], [X(mW + 0.0065), mY - 0.005]];
-      line(g, f, quad(...fold), 0.0022, deep(skin, 0.7), 0.1 + ag * 0.28, 0.0008);
+      line(g, f, quad(...fold), 0.0022, deep(skin, 0.7), 0.04 + ag * 0.34, 0.0008);
       line(g, f, quad(...fold.map(p => [p[0] + X(0.0022), p[1] + 0.0008])), 0.0018, lite(skin, 0.3), 0.12, 0.0008);
       soft(g, f, X(0.028), 0.02, 0.016, 0.004, lite(skin, 0.3), 0.14);                                    // brow bone light
       if (ag > 0.5) line(g, f, [[X(mW + 0.003), mY - 0.004], [X(mW + 0.006), mY - 0.018], [X(mW + 0.005), cY + 0.004]], 0.0018, deep(skin, 0.72), (ag - 0.5) * 0.5, 0.0008);
@@ -300,22 +311,21 @@ const CharFace = (() => {
       g.fillStyle = css(mix(skin, [140, 70, 35], 0.3 + R() * 0.3), 0.16 + R() * 0.3); g.beginPath(); g.arc(X, Y, r, 0, 7); g.fill();
     }
     for (let k = 0; k < (lk.moles ?? 2); k++) { const [X, Y] = P(f, (R() - 0.5) * 0.1, -0.09 + R() * 0.12); g.fillStyle = css(mix(skin, [70, 40, 25], 0.6), 0.55); g.beginPath(); g.arc(X, Y, S / 512 * 1.3, 0, 7); g.fill(); }
-    // hairline: soft shadow and fine hairs where the scalp shell meets the skin
+    // hairline: under the shell the scalp is painted dark with hair (gaps between strand cards read as hair, not skin); at the
+    // edge a ragged band of fine short hairs thins out down the forehead, so no line shows where the shell starts
     if (lk.hair && lk.hair.style !== 'bald') {
-      const h = lk.hair;
-      const nh = S < 300 ? 45 : 110, hl = Object.assign({}, h, h.style === 'receding' ? { recede: 1 } : {});
-      // the scalp under the shell carries a root tone, so skin never shows as a bright strip between the painted
-      // hairline and the shell's edge (the forehead's top faces the key light)
-      g.fillStyle = css(mix(skin, hairC, h.style === 'buzz' ? 0.3 : 0.7), 1); g.beginPath();
-      for (let k = 0; k <= 40; k++) { const phi = (k / 40 - 0.5) * 3.0, [X, Y] = Pphi(f, phi, CharHair.hairline(hl, Math.abs(phi)) - 0.0045); k ? g.lineTo(X, Y) : g.moveTo(X, Y); }
-      for (let k = 40; k >= 0; k--) { const [X, Y] = Pphi(f, (k / 40 - 0.5) * 3.0, 0.14); g.lineTo(X, Y); }
+      const h = lk.hair, hl = Object.assign({}, h, h.style === 'receding' ? { recede: 1 } : {}), ph0 = R() * 9;
+      const edge = phi => CharHair.hairline(hl, Math.abs(phi)) + 0.0012 * Math.sin(phi * 23 + ph0) + 0.0008 * Math.sin(phi * 61 + ph0 * 2);
+      g.fillStyle = css(mix(skin, hairC, h.style === 'buzz' ? 0.3 : /ponytail|tied_back|buns/.test(h.style) ? 0.62 : 0.82), 1); g.beginPath();   // hair pulled back shows more scalp
+      for (let k = 0; k <= 60; k++) { const phi = (k / 60 - 0.5) * 3.0, [X, Y] = Pphi(f, phi, edge(phi) + 0.0025); k ? g.lineTo(X, Y) : g.moveTo(X, Y); }
+      for (let k = 60; k >= 0; k--) { const [X, Y] = Pphi(f, (k / 60 - 0.5) * 3.0, 0.14); g.lineTo(X, Y); }
       g.fill();
-      for (let k = 0; k < nh; k++) {
-        const phi = (k / (nh - 1) - 0.5) * 3.0, y0 = CharHair.hairline(Object.assign({}, h, h.style === 'receding' ? { recede: 1 } : {}), Math.abs(phi));
-        const [X, Y] = Pphi(f, phi, y0 - 0.006), rr = px(f, 0.009);
-        const gr = g.createRadialGradient(X, Y, 0, X, Y, rr); gr.addColorStop(0, css(mix(skin, hairC, 0.6), 0.42)); gr.addColorStop(1, css(hairC, 0));
-        g.fillStyle = gr; g.fillRect(X - rr, Y - rr, rr * 2, rr * 2);
-        for (let q = 0; q < (S < 300 ? 2 : 4); q++) { g.strokeStyle = css(hairC, 0.2 + R() * 0.35); g.lineWidth = S / 512 * 0.7; g.beginPath(); g.moveTo(X + (R() - 0.5) * 6, Y - 2); g.lineTo(X + (R() - 0.5) * 8, Y + px(f, 0.002 + R() * 0.005)); g.stroke(); }
+      const n = S < 300 ? 900 : 3200, p1 = S / 512;
+      for (let k = 0; k < n; k++) {
+        const phi = (R() * 2 - 1) * 1.5, d = Math.pow(R(), 1.6) * 0.0075, y = edge(phi) + 0.003 - d;   // denser toward the shell
+        const [X, Y] = Pphi(f, phi, y), len = px(f, 0.0015 + R() * 0.004), lean = (phi > 0 ? 1 : -1) * (R() * 0.8 - 0.1) * len;
+        g.strokeStyle = css(mul(hairC, 0.8 + R() * 0.5), (0.18 + R() * 0.5) * (1 - d / 0.009)); g.lineWidth = p1 * (0.45 + R() * 0.5);
+        g.beginPath(); g.moveTo(X, Y); g.lineTo(X + lean, Y - len); g.stroke();
       }
       if (h.style === 'buzz') for (let k = 0; k < 5000 * (S / 512) ** 2; k++) { const phi = (R() * 2 - 1) * 1.55, y = 0.03 + R() * 0.09; if (y < CharHair.hairline(h, Math.abs(phi))) continue; const [X, Y] = Pphi(f, phi, y); g.fillStyle = css(hairC, 0.45); g.fillRect(X, Y, 1, 1); }
     }
@@ -442,8 +452,8 @@ const CharFace = (() => {
   function mouth(f, g, F, sk) {
     const L = f.L, lk = f.look, my = L.mouthY, lips = (lk.head && lk.head.lips) || 1, fem = L.P.fem;
     const dark = (sk[0] + sk[1] + sk[2]) / 765 < 0.45;
-    const lc = lk.lipColor ? rgbOf(lk.lipColor) : dark ? mix(sk, [95, 42, 48], 0.35) : mix(sk, [180, 88, 90], fem ? 0.42 : 0.3);
-    const hw = L.mouthW * F.wd * (1 + 0.1 * Math.max(0, (F.sL + F.sR) / 2)) * (1 - F.pr * 0.08);
+    const lc = lk.lipColor ? rgbOf(lk.lipColor) : dark ? mix(sk, [95, 42, 48], 0.35) : mix(sk, [165, 70, 76], fem ? 0.5 : 0.43);
+    const hw = L.mouthW * 0.94 * F.wd * (1 + 0.1 * Math.max(0, (F.sL + F.sR) / 2)) * (1 - F.pr * 0.08);
     const op = clamp(F.op, 0, 1), band = 0.0024;
     const cL = [hw + Math.max(0, F.sL) * 0.002, my + F.sL * 0.0045], cR = [-(hw + Math.max(0, F.sR) * 0.002), my + F.sR * 0.0045];
     const upT = 0.0088 * lips * (1 - F.pr * 0.25) * (1 - Math.max(0, F.sL + F.sR) * 0.12) + F.up * 0.002;

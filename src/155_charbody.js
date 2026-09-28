@@ -6,6 +6,7 @@
 //        layout (face UV layout for CharFace), D (dimensions/landmarks), atlas, attach: {name: {bone, pos, nrm}} }
 //   CharBody.rebuild(built, look)      regenerate the body mesh (outfit/part change) on the same skeleton
 //   CharBody.dispose(built)            free its geometries
+//   built.cards: heroes' hair strand cards (a Mesh on the head bone, CharHair.cardMesh)
 //   Extras (look detail < 1) are built merged: built.head is null and the head is part of built.body, its face
 //   painted into the atlas region built.faceR (CharFace paints it).
 //   CharBody.mat(kind)                 shared vertex-coloured PBR materials for props ('prop', 'glow', 'screen')
@@ -25,7 +26,7 @@ const CharBody = (() => {
   const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
   const gauss = (x, s) => Math.exp(-(x * x) / (s * s));
   const lerp = (a, b, t) => a + (b - a) * t;
-  const WHITE = new THREE.Color(1, 1, 1);
+  const WHITE = new THREE.Color(1, 1, 1), NAIL = new THREE.Color(1.12, 0.96, 0.93);
 
   // Catmull-Rom interpolation through keyed rows [[x, v1, v2, ...], ...] (sorted by x).
   function cr(keys, x, out) {
@@ -443,12 +444,12 @@ const CharBody = (() => {
     return surf(mb, rows, cols, (i, j) => {
       const t = i / (rows - 1), y = lerp(y0, y1, t), phi = j / (cols - 1) * TAU - Math.PI;
       let rx = rn * lerp(1.12, 0.9, t), rz = rn * lerp(1.05, 0.98, t), zc = -0.015 * D.s + t * 0.004, apple = 1;
-      // where the head mesh's own neck (CharHead: capsule neckR*0.92 -> *1.04 from y -0.045 to -0.22, mesh down to
+      // where the head mesh's own neck (CharHead: capsule neckR*0.79 -> *0.96 from y -0.045 to -0.22, mesh down to
       // HY0) covers this tube, keep the tube inside it: two skin surfaces crossing show as a jagged seam
       const yl = (y - D.headO.y) / D.hs;
       if (yl > CharHead.HY0 + 0.004) {
-        const tc = clamp((-0.045 - yl) / 0.175, 0, 1), rc = rn * (0.92 + 0.12 * tc) * 0.9;
-        rx = Math.min(rx, rc); rz = Math.min(rz, rc); zc = D.headO.z + lerp(-0.03, -0.024, tc) * D.hs; apple = 0;
+        const tc = clamp((-0.045 - yl) / 0.175, 0, 1), rc = rn * (0.79 + 0.17 * tc) * 0.88;
+        rx = Math.min(rx, rc); rz = Math.min(rz, rc); zc = D.headO.z + lerp(-0.024, -0.02, tc) * D.hs; apple = 0;
       }
       const p = new V3(Math.sin(phi) * rx, y, zc + Math.cos(phi) * rz + (Math.cos(phi) > 0 ? apple * 0.004 * D.s * gauss(t - 0.55, 0.2) * gauss(Math.sin(phi), 0.3) * (1 - D.fem) : 0));
       const [u, v] = A.uv(r, j / (cols - 1), t);
@@ -491,6 +492,8 @@ const CharBody = (() => {
       const base = wk.clone().add(new V3(0, 0, z)).addScaledVector(side, 0.001 * s);
       box(base.clone().addScaledVector(dir, L * 0.24), L * 0.5, fw * 0.96, palmT * 0.72, W1('fingers' + S), 0.4, 0.94);
       if (!o.fingerless) box(base.clone().addScaledVector(dir, L * 0.45 + L * 0.29), L * 0.58, fw * 0.9, palmT * 0.64, W1('fingers2' + S), 0.6, 0.8, (t) => t > 0.8 ? new THREE.Color().copy(col).multiplyScalar(1.08) : undefined);
+      if (!o.fingerless && LOD >= 1 && !o.paint) box(base.clone().addScaledVector(dir, L * 0.9).addScaledVector(side, -sd * palmT * 0.27), L * 0.2, fw * 0.62, palmT * 0.14, W1('fingers2' + S), 0.9, 0.9, () => NAIL);   // nail
+      if (LOD >= 1) box(base.clone().addScaledVector(dir, -0.004 * s).addScaledVector(side, -sd * palmT * 0.3), 0.014 * s, fw * 0.78, palmT * 0.34, W2('hand' + S, 'fingers' + S, 0.5), 0.3, 1);   // knuckle
     }
     // thumb
     const t0 = J['thumb' + S], t1 = J['thumb2' + S], td = new V3().subVectors(t1, t0).normalize();
@@ -608,6 +611,7 @@ const CharBody = (() => {
       root.add(m); m.bind(sk.skeleton, new THREE.Matrix4());
       m.boundingSphere = new THREE.Sphere(new V3(0, D.H * 0.5, 0), D.H * 0.95);
     }
+    CharHair.cardMesh(B);
     return B;
   }
   function bodyGeometry(B) {
@@ -622,8 +626,9 @@ const CharBody = (() => {
     let g = bodyGeometry(B);
     if (B.merged) { const m = mergeGeometries([g, B.headGeo]); g.dispose(); g = m; }
     B.body.geometry.dispose(); B.body.geometry = g;
+    CharHair.cardMesh(B);
   }
-  function dispose(B) { B.body.geometry.dispose(); if (B.head) B.head.geometry.dispose(); if (B.headGeo) B.headGeo.dispose(); }
+  function dispose(B) { B.body.geometry.dispose(); if (B.head) B.head.geometry.dispose(); if (B.headGeo) B.headGeo.dispose(); B.cardGeo = null; if (B.cards) B.cards.geometry.dispose(); }
 
   return { get LOD() { return LOD; }, build, rebuild, dispose, mat, patchBody, softShadow, MB, surf, capRing, torsoLoft, torsoPt, limb, hand, foot, neckTube, W1, W2, BI, BONES, cr, gauss, sstep, clamp, lerp, vnoise, hash, Atlas, headUV: CharHead.uv, TAU };
 })();

@@ -76,6 +76,7 @@ const Gest = (() => {
   const LOW = { lie: 'kneel', dead: 'kneel', sit_ground: 'crouch', cradle: 'kneel', struggle_down: 'kneel', crawl: 'kneel', pin: 'kneel' };
   function pose(c, name, o = {}) {
     if (!POSES[name]) name = 'stand';
+    c.aimAt = name === 'aim' && o.at ? (o.at.isVector3 ? o.at.clone() : null) : null;
     const cur = c.poseName;
     const via = !o.direct && UPRIGHT.has(cur) && LOW[name] && POSES[LOW[name]] ? LOW[name] : !o.direct && LOW[cur] && UPRIGHT.has(name) ? LOW[cur] : null;
     const dur = o.dur ?? (name === 'dead' ? 0.7 : 0.6);
@@ -165,7 +166,10 @@ const Gest = (() => {
     rotToward(Bb, _c, t, w);
   }
   const _poleL = new V3(), _tmp = new V3();
-  function pole(c, S, out) { const sd = S === 'L' ? 1 : -1; return out.set(sd * 0.45, -0.35, -0.35).applyMatrix4(c.bones.chest.matrixWorld); }
+  function pole(c, S, out) {                               // the elbow bends toward this point (chest space; c.ikPole overrides per side)
+    const sd = S === 'L' ? 1 : -1, o = c.ikPole && c.ikPole[S];
+    return (o ? out.set(o[0], o[1], o[2]) : out.set(sd * 0.45, -0.35, -0.35)).applyMatrix4(c.bones.chest.matrixWorld);
+  }
   // bone-relative point (offset scaled by body/head size)
   function bonePt(c, bone, off, out) { const s = bone === 'head' || bone === 'jaw' ? c.D.hs : c.D.s; return out.set(off[0] * s, off[1] * s, off[2] * s).applyMatrix4(c.bones[bone].matrixWorld); }
   function targetOf(c, spec, S, o, out) {
@@ -188,6 +192,19 @@ const Gest = (() => {
   }
   function wAt(keys, t) { let i = 0; while (i < keys.length - 2 && t > keys[i + 1][0]) i++; const a = keys[i], b = keys[i + 1]; return lerp(a[1], b[1], sm(clamp((t - a[0]) / (b[0] - a[0] || 1), 0, 1))); }
 
+  // the support hand on a long gun: palm up under the fore-end, fingers across it; moves the wrist target `p` below and
+  // left of the fore-end and returns the hand's world orientation
+  const _gf = new V3(), _gn = new V3(), _gd = new V3(), _gq = new Q();
+  function foreGrip(c, g, p) {
+    g.updateWorldMatrix(true, false);
+    const e = g.matrixWorld.elements;
+    _gd.set(e[8], e[9], e[10]).normalize(); _gn.set(e[4], e[5], e[6]).normalize();       // barrel, gun up
+    _gf.crossVectors(_gd, _gn).normalize();                                                // across, to the shooter's right
+    p.addScaledVector(_gn, -0.035 * c.D.s).addScaledVector(_gf, -0.045 * c.D.s);
+    _x.copy(_gn).negate(); _y.copy(_gf).negate(); _z.crossVectors(_x, _y);
+    _m3.makeBasis(_x, _y, _z);
+    return _gq.setFromRotationMatrix(_m3);
+  }
   // palm toward a point (the eyes: a phone screen faces the face), fingers up
   const _m3 = new THREE.Matrix4(), _x = new V3(), _y = new V3(), _z = new V3();
   function palmTo(c, S, target, w) {
@@ -205,12 +222,13 @@ const Gest = (() => {
   }
   // after FK + matrices: base-pose IK, gesture IK, pair IK, prop off-hand IK
   function post(c, dt) {
-    const s = c.gest, ikT = c.ikT || (c.ikT = {}), bp = c.basePose, bw = c.poseBlend.t;
-    for (const S of ['L', 'R']) {
+    const s = c.gest, ikT = c.ikT || (c.ikT = {}), bp = c.basePose, bw = c.poseBlend.t, gun = bp === POSES.aim && c.heldP.r && c.heldP.r.userData.muzzle ? c.heldP.r : null;
+    for (const S of ['R', 'L']) {                            // right first: the left hand may grip what the right one holds
       let tgt = null, w = 0;
       const pr = ikT[S];
       if (pr && pr.w > 0.001) { tgt = pr.p; w = pr.w; }
       if (!tgt && bp.ik && bp.ik[S]) { tgt = bonePt(c, bp.ik[S][0], bp.ik[S][1], new V3()); w = sm(bw); }
+      if (!tgt && gun && S === 'R') { tgt = bonePt(c, 'chest', gun.userData.off ? [-0.09, 0.25, 0.28] : [-0.03, 0.2, 0.48], new V3()); w = sm(bw); }   // a long gun shouldered, a pistol at arm's length
       if (s && s.g.ik) {
         const spec = s.g.ik[S.toLowerCase()];
         if (spec) {
@@ -223,20 +241,33 @@ const Gest = (() => {
           }
         }
       }
-      if (!tgt && c.twoHand && S === 'L') { const pp = c.twoHand(); if (pp) { tgt = pp; w = 1; } }
+      let fore = null;
+      if (!tgt && c.twoHand && S === 'L') { const pp = c.twoHand(); if (pp) { fore = foreGrip(c, c.heldP.r, pp); tgt = pp; w = 1; } }
       if (tgt) armIK(c, S, tgt, w, pole(c, S, _poleL));
+      if (fore) { const h = c.bones.handL; h.parent.getWorldQuaternion(_q2).invert(); h.quaternion.copy(_q2.multiply(fore)); h.updateMatrixWorld(true); }
       if (bp.palm && bp.palm[S] && !(pr && pr.w > 0.5)) palmTo(c, S, bp.palm[S] === 'eyes' ? c.point('eyes', _b) : c.bones.head.getWorldPosition(_b), sm(bw) * (s && s.g.ik && s.g.ik[S.toLowerCase()] ? 0 : 1));
+      if (gun && S === 'R') aimGun(c, gun, sm(bw));
     }
+  }
+  // turn the right hand so the gun's barrel points at c.aimAt (set by pose('aim', {at})), else straight ahead
+  function aimGun(c, g, w) {
+    const h = c.bones.handR, m = g.userData.muzzle;
+    g.updateWorldMatrix(true, false);
+    const o = g.localToWorld(_a.set(0, m[1], 0)), dir = g.localToWorld(_b.set(m[0], m[1], m[2])).sub(o).normalize();
+    const want = c.aimAt ? _c.copy(c.aimAt).sub(o).normalize() : _c.set(0, -0.05, 1).applyQuaternion(c.root.quaternion).normalize();
+    _q.setFromUnitVectors(dir, want); if (w < 1) _q.slerp(_q2.identity(), 1 - w);
+    h.getWorldQuaternion(_q2); _q.multiply(_q2);
+    h.parent.getWorldQuaternion(_q2).invert(); h.quaternion.copy(_q2.multiply(_q)); h.updateMatrixWorld(true);
   }
 
   // ---- paired animations -----------------------------------------------------------------------------------
   // leader c, follower other. Anchors are in the leader's local frame; follower root blends in over 0.45 s.
   const MODES = {
-    carry: { lead: 'carry', follow: 'carried', place: (c, o) => ({ p: [0.04 * c.D.s, c.D.yChest * 0.86 - o.D.yHips, 0.3 * c.D.s], yaw: -Math.PI / 2 }) },
+    carry: { lead: 'carry', follow: 'carried', place: (c, o) => ({ p: [0.02 * c.D.s, c.D.yChest * 0.79 - o.D.yHips, 0.27 * c.D.s], yaw: -Math.PI / 2 }) },
     hug: { lead: null, follow: null, place: (c, o) => ({ p: [0.06 * c.D.s, 0, 0.24 * (c.D.s + o.D.s) / 2 + 0.02], yaw: Math.PI }) },
     face_hold: { lead: null, follow: null, place: (c, o) => ({ p: [0, 0, 0.36 * c.D.s], yaw: Math.PI }) },
     pin: { lead: 'pin', follow: 'struggle_down', place: (c, o) => ({ p: [0, 0, 0.12 * c.D.s], yaw: Math.PI }), followerIsBase: true },
-    cradle: { lead: 'cradle', follow: 'cradled', place: (c, o) => ({ p: [-0.08 * c.D.s, 0.2 * c.D.s - o.D.yHips, 0.3 * c.D.s], yaw: -Math.PI / 2 }) },
+    cradle: { lead: 'cradle', follow: 'cradled', place: (c, o) => ({ p: [-0.22 * c.D.s, 0.33 * c.D.s - o.D.yHips, 0.31 * c.D.s], yaw: -Math.PI / 2 }) },
     shoulders: { lead: null, follow: 'sit_shoulders', place: (c, o) => ({ p: [0, c.D.yNeck + 0.02 - o.D.yHips + 0.04 * o.D.s, -0.05 * c.D.s], yaw: 0 }) },
     drag: { lead: 'crouch', follow: 'lie', place: (c, o) => ({ p: [0, 0, 0.55 * c.D.s], yaw: 0 }) },
   };
@@ -260,7 +291,7 @@ const Gest = (() => {
     if (c.mount) { Quad.dismount(c); return; }
     const pr = c.pair; if (!pr) return;
     const o = pr.other;
-    c.pair = null; o.pairOf = null;
+    c.pair = null; o.pairOf = null; c.ikPole = o.ikPole = o.lookBody = null;
     if (c.ikT) c.ikT = {};
     if (o.ikT) o.ikT = {};
     if (pr.M.lead && c.poseName === pr.M.lead) pose(c, 'stand');
@@ -291,7 +322,8 @@ const Gest = (() => {
     if (pr.mode === 'carry') {
       T(c, 'L', bonePt(o, 'chest', [-0.02, -0.02, -0.14], new V3()), 1);
       T(c, 'R', bonePt(o, 'shinL', [0, 0.02, -0.07], new V3()).lerp(bonePt(o, 'shinR', [0, 0.02, -0.07], new V3()), 0.5), 1);
-      T(o, 'R', bonePt(c, 'neck', [-0.07, 0.03, -0.04], new V3()), 0.9);
+      T(o, 'R', bonePt(c, 'neck', [0.035, 0.0, -0.045], new V3()), 0.9);      // her arm round his neck
+      o.ikPole = { R: [-0.5, 1.0, 0.1] };
       o.lookAt(c);
     } else if (pr.mode === 'hug') {
       T(c, 'L', bonePt(o, 'chest', [-0.1, 0.02, -0.13], new V3()), 1); T(c, 'R', bonePt(o, 'chest', [0.1, -0.05, -0.12], new V3()), 1);
@@ -304,13 +336,15 @@ const Gest = (() => {
       T(c, 'L', o.point('shoulder_r', new V3()).add(new V3(0, 0.04, 0)), 1);
       T(c, 'R', o.point('eyes', new V3()).add(new V3(0, 0.14, 0)), 1);
       T(o, 'L', bonePt(c, 'chest', [0.08, 0.02, 0.12], new V3()), 0.8); T(o, 'R', bonePt(c, 'foreArmR', [0, -0.12, 0], new V3()), 0.9);
-    } else if (pr.mode === 'cradle') {
-      T(c, 'L', bonePt(o, 'chest', [0.02, 0.1, -0.12], new V3()), 1);
-      T(c, 'R', bonePt(o, 'head', [-0.07, 0.0, 0.05], new V3()), 0.85);
+    } else if (pr.mode === 'cradle') {                        // his left arm under her shoulders (her head in its crook), right hand at her hair
+      T(c, 'L', bonePt(o, 'chest', [0.1, 0.1, -0.04], new V3()), 1);
+      T(c, 'R', bonePt(o, 'head', [-0.1, 0.05, -0.06], new V3()), 0.85);   // cupping the back of her head, fingers in her hair
+      T(o, 'L', bonePt(o, 'spine', [0.03, 0.02, 0.11], new V3()), 1);   // her own left hand rests on her stomach
+      c.ikPole = { L: [1.2, -1.2, -0.1] };
       const g = pr.grip && !o.gripRelease ? 1 : 0;
       o.gripW = lerp(o.gripW ?? g, g, 1 - Math.exp(-3 * dt));
-      T(o, 'R', bonePt(c, 'chest', [0.05, 0.19, 0.1], new V3()), o.gripW);
-      o.lookAt(c); c.lookAt(o);
+      T(o, 'R', bonePt(c, 'chest', [0.02, 0.09, 0.14], new V3()), o.gripW);
+      o.lookAt(c); c.lookAt(o); o.lookBody = 0.3;                         // her face stays up, toward the camera; her eyes find him
     } else if (pr.mode === 'shoulders') {
       T(o, 'L', bonePt(c, 'head', [0.06, 0.1, 0.02], new V3()), 1); T(o, 'R', bonePt(c, 'head', [-0.06, 0.1, 0.02], new V3()), 1);
       T(c, 'L', bonePt(o, 'shinL', [0, -0.1, 0.02], new V3()), 1); T(c, 'R', bonePt(o, 'shinR', [0, -0.1, 0.02], new V3()), 1);
