@@ -171,7 +171,8 @@ const Game = (() => {
     sfx: (id, o) => Audio.sfx(id, o),
     amb: (id, fade) => Audio.amb(id, fade),
     spawn: (type, at, o = {}) => AI.spawn(type, resolveAt(at), o),
-    hook: (name, args) => guard(CONTENT.hooks[name](G, args)),
+    // A beat whose hook isn't built yet ends the current build (spec §19: stop after the last finished chapter).
+    hook: (name, args) => { if (!CONTENT.hooks[name]) { ++runId; cancelWaits(); Play.enable(false); UI.endOfBuild(); return Promise.reject(ABORT); } return guard(CONTENT.hooks[name](G, args)); },
     grade: (g, dur) => Engine.setGrade(g, dur),
     save: () => saveCheckpoint(),
   };

@@ -41,7 +41,7 @@ for (const s of steps) {
     else if (k === 'down') await page.keyboard.down(v);
     else if (k === 'up') await page.keyboard.up(v);
     else if (k === 'click') await page.mouse.click(W / 2, H / 2);
-    else if (k === 'shot') { await page.evaluate(() => GAME.dev.render && GAME.dev.render()); mkdirSync(dirname(root + v), { recursive: true }); await page.screenshot({ path: root + v }); console.log('[shot]', v); }
+    else if (k === 'shot') { await page.evaluate(() => GAME.dev.render && GAME.dev.render()); mkdirSync(dirname(root + v), { recursive: true }); await page.screenshot({ path: root + v, timeout: 240000 }); console.log('[shot]', v); }
   } catch (e) { errors.push(`[step ${s}] ${e.message}`); }
 }
 try { (await import('node:fs')).unlinkSync(outHtml); } catch {}
