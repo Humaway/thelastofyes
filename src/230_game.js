@@ -182,7 +182,7 @@ const Game = (() => {
 
   async function runFrom(chId, stepId) {
     const my = ++runId; cancelWaits(); Director.stop(); Dialogue.stop(); UI.prompt(null);
-    state = 'play'; paused = false;
+    state = 'play'; unpause();
     chapterId = chId;
     const ch = CONTENT.chapters[chId];
     if (!ch) { console.error('no chapter ' + chId); return; }
@@ -215,7 +215,7 @@ const Game = (() => {
     await UI.death(cause);
     if (my === runId) retry();
   }
-  function quitToTitle() { ++runId; cancelWaits(); Director.stop(); Dialogue.stop(); paused = false; titleScreen(); }
+  function quitToTitle() { ++runId; cancelWaits(); Director.stop(); Dialogue.stop(); unpause(); titleScreen(); }
 
   async function titleScreen() {
     state = 'title';
@@ -225,6 +225,7 @@ const Game = (() => {
     UI.titleScreen();
   }
 
+  function unpause() { if (!paused) return; paused = false; Engine.uniforms.uDesat.value = 0; Audio.pause && Audio.pause(false); UI.pauseMenu(false); }
   function setPaused(p) {
     if (state !== 'play' || paused === p) return;
     paused = p;
