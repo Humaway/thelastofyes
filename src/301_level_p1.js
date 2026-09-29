@@ -21,7 +21,7 @@
 //   mk_store_phone                   [-0.72, 1.0, -7.52]       0       store landline on Chase's counter (Luke's end)
 //   mk_chase_phone                   [-0.8, 0, -8.3]           0.3     Chase on the landline (the handset cord reaches)
 //   mk_whiteboard                    [-0.95, 0, -9.35]         2.7     writing on the leaderboard (board centre [0, 1.58, -9.86])
-//   mk_luke_board                    [ 0.95, 0, -8.55]         -2.15   Luke, facing Chase at the board
+//   mk_luke_board                    [ 0.95, 0, -8.55]         -1.35   Luke at the board, cheated open to the shop floor
 //   mk_luke_phone / mk_luke_lean     [-0.05,0,-8.25] / [0.15,0,-8.35]   Luke at the landline / leaning in to Chase
 //   mk_eftpos                        [-1.2, 1.02, -7.25]               the EFTPOS pad on Chase's counter (customer side)
 //   mk_door                          [-5.9, 0, -9.7]           0       back-office door (Store Manager's voice: [-5.9,1.6,-10.8])
@@ -275,12 +275,12 @@
       A.add(new THREE.LineSegments(mergeGeometries(strings), new THREE.LineBasicMaterial({ color: 0x9a968e, transparent: true, opacity: 0.3 })));
       // ---- people ------------------------------------------------------------------------------------------------
       A.data.queue = crowd(A);
-      A.data.guard = A.char('security_guard', { name: 'security_guard', at: [-1.75, 0, 1.0], yaw: PI / 2 });
+      A.data.guard = A.char('security_guard', { name: 'security_guard', at: [-1.75, 0, 1.0], yaw: PI / 2 }); A.data.guard.hold('counter', 'r');
       A.data.customer = A.char('customer', { name: 'customer', at: [-1.6, 0, -6.72], yaw: PI });
       // ---- markers --------------------------------------------------------------------------------------------------
       for (const [n, p, y] of [['mk_chase_counter', [-1.6, 0, -8.2], 0], ['mk_luke_counter', [1.6, 0, -8.2], 0], ['mk_customer', [-1.6, 0, -6.72], PI],
         ['mk_customer_side', [-2.6, 0, -6.72], PI], ['mk_next', [0.1, 0, -5.3], PI], ['mk_store_phone', [-0.72, 1.0, -7.52], 0], ['mk_chase_phone', [-0.8, 0, -8.3], 0.3],
-        ['mk_luke_phone', [-0.05, 0, -8.25], -0.5], ['mk_luke_lean', [0.15, 0, -8.35], -1.3], ['mk_whiteboard', [-0.95, 0, -9.35], 2.7], ['mk_luke_board', [0.95, 0, -8.55], -2.15], ['mk_door', [-5.9, 0, -9.7], 0],
+        ['mk_luke_phone', [-0.05, 0, -8.25], -0.5], ['mk_luke_lean', [0.15, 0, -8.35], -1.3], ['mk_whiteboard', [-0.95, 0, -9.35], 2.7], ['mk_luke_board', [0.95, 0, -8.55], -1.35], ['mk_door', [-5.9, 0, -9.7], 0],
         ['mk_entrance', [0, 0, 0.6], PI], ['mk_guard', [-1.75, 0, 1.0], PI / 2], ['mk_start', [0, 0, 7], PI], ['mk_eftpos', [-1.2, 1.02, -7.25], 0],
         ['mk_cam_counter', [-1.35, 1.52, -5.6], 0], ['mk_cam_luke', [1.9, 1.5, -5.7], 0], ['mk_cam_store', [5.6, 2.1, -0.8], 0], ['mk_cam_demo', [-2.3, 1.25, -2.4], 0],
         ['mk_cam_door_in', [0.4, 1.7, -3.6], 0], ['mk_cam_queue_out', [3.6, 1.62, 4.1], 0], ['mk_cam_queue_look', [10, 1.4, 1.3], 0], ['mk_cam_grab', [7.4, 1.6, 3.6], 0]]) A.marker(n, p, y);
@@ -303,7 +303,7 @@
       // dawn: a low sun through the smashed shopfront, a shaft through the collapsed ceiling bay, deep cool shade elsewhere
       Build.hemi({ sky: 0x7d93b4, ground: 0x2a2418, intensity: 0.4 });
       Build.sun({ dir: [0.45, -0.33, -0.83], color: 0xffbe7a, intensity: 7.5, area: 13, target: [0, 0, -5] });
-      Build.light('point', { pos: [3.5, 3.0, -3.9], color: 0xffd8a8, intensity: 6, distance: 7 });   // the bay's bounce, on the polo's front
+      Build.light('point', { pos: [3.5, 3.0, -3.9], color: 0xffd8a8, intensity: 4.2, distance: 7 });   // the bay's bounce, on the polo's front
       Build.light('point', { pos: [0.5, 2.2, -8.6], color: 0x8a98b0, intensity: 1.5, distance: 7 });
       Build.light('spot', { pos: [-1.2, 3.8, -7.3], target: [-1.2, 1.0, -7.35], color: 0xffe2b8, intensity: 9, distance: 5, angle: 0.32, penumbra: 0.7 });
       // ceiling: tiles around a collapsed bay over the fig tree, exposed purlins, fallen panels
@@ -389,7 +389,7 @@
       // fig frames the right, the menu sits over the shaded west wall
       const pos = V(0, 0, 0), target = V(0, 0, 0);
       Director.manual({ pos, target, fov: U.lensToFov(35) });
-      const P0 = V(4.4, 1.45, -0.3), T0 = V(0.4, 1.4, -9.0), P1 = V(3.6, 1.42, -1.3), T1 = V(0.0, 1.75, -9.0);
+      const P0 = V(4.4, 1.45, -0.3), T0 = V(0.4, 1.4, -9.0), P1 = V(3.95, 1.43, -0.9), T1 = V(0.2, 1.62, -9.0);
       A.update((dt, t) => {
         const k = (1 - Math.cos(t * 0.045)) / 2, w = Math.sin(t * 0.13);
         pos.lerpVectors(P0, P1, k).y += w * 0.04; target.lerpVectors(T0, T1, k);
@@ -427,8 +427,9 @@
       { cam: { type: 'crane', from: [2.2, 7.2, 11.5], to: [3.7, 1.62, 4.3], look: [0.3, 3.3, 0.2], lookTo: [10, 1.35, 1.4], lens: 24, dur: 10 }, dur: 9.4, focus: null,
         cues: [{ t: 0, fade: 'none', dur: 2.5 }, chime(3.2, [8, 1.4, 1.3], 0.4), chime(7.4, [5, 1.4, 1.5], 0.4)] },
       // The Security Guard counts them in: the first click of the game.
-      { cam: { type: 'static', at: [-3.3, 1.65, 1.65], look: [1.8, 1.25, 1.05], lens: 32 }, dur: 3.8, focus: 'security_guard',
-        actions: [{ t: 0.3, who: 'q0', do: 'walkTo', path: [[0.7, 0, 1.0], [0.15, 0, -0.55]], yaw: PI }, { t: 0.9, who: 'security_guard', do: 'lookAt', at: 'q0' }],
+      { cam: { type: 'static', at: [1.1, 1.5, 2.2], look: [-1.75, 1.35, 0.95], lens: 35 }, dur: 3.8, focus: 'security_guard',
+        actions: [{ t: 0.3, who: 'q0', do: 'walkTo', path: [[0.7, 0, 1.0], [0.15, 0, -0.55]], yaw: PI }, { t: 0.9, who: 'security_guard', do: 'lookAt', at: 'q0' },
+          { t: 1.1, who: 'security_guard', do: 'gesture', name: 'hand_over', to: [-1.32, 1.18, 1.2] }],
         cues: [{ t: 1.75, sfx: 'click_counter', at: 'security_guard.hand_r', vol: 0.9 }] },
       // 3. Inside: along the counter to Chase, closing a sale.
       { cam: { type: 'dolly', from: [2.4, 1.48, -6.05], to: [-0.45, 1.5, -6.2], look: 'chase.chest', lens: 35, dur: 6.5 }, hold: 0.3,
@@ -449,8 +450,8 @@
       { cam: { type: 'static', at: [0.3, 1.58, -7.25], look: [-0.25, 1.5, -9.9], lens: 35 }, dur: 4.2, focus: 'chase',
         actions: [{ t: 0, who: 'chase', do: 'walkTo', at: 'mk_whiteboard', yaw: PI }, { t: 0.2, who: 'customer', do: 'emote', name: 'smile' },
           { t: 1.7, who: 'chase', do: 'gesture', name: 'point', to: [-0.5, 1.66, -9.86] }, { t: 2.3, do: 'call', hook: 'p1.board', args: 300 }, { t: 3.3, who: 'chase', do: 'turnTo', to: 'luke' },
-          { t: 1.9, who: 'luke', do: 'walkTo', at: 'mk_luke_board', yaw: -2.15 }] },
-      { cam: { type: 'static', at: [0.05, 1.58, -6.2], look: [0.0, 1.48, -9.0], lens: 30, push: 0.05 }, hold: 0.7,
+          { t: 1.9, who: 'luke', do: 'walkTo', at: 'mk_luke_board', yaw: -1.35 }] },
+      { cam: { type: 'static', at: [0.0, 1.56, -6.4], look: [0.0, 1.45, -9.0], lens: 32, push: 0.04 }, hold: 0.7,
         lines: [{ who: 'luke', text: 'Three hundred.', emote: 'smirk', pause: 0.4 }, { who: 'chase', text: 'Three-twelve by midnight.', emote: 'smile' },
           { who: 'luke', text: "It's eleven-forty.", emote: 'neutral' }, { who: 'chase', text: 'Then stop talking to me.', emote: 'smirk', pause: 0.4 }] },
       // 5. The store phone. Luke answers, rolls his eyes, holds it out.
@@ -463,14 +464,14 @@
           { t: 5.6, do: 'call', hook: 'p1.handset', args: 'chase' }, { t: 5.65, who: 'chase', do: 'pose', name: 'phone_ear' }, { t: 5.9, who: 'chase', do: 'lookAt', at: null },
           { t: 6.3, who: 'luke', do: 'walkTo', at: 'mk_luke_counter', yaw: -0.35 }, { t: 3.0, who: 'customer', do: 'pose', name: 'phone' }],
         cues: [{ t: 0.3, sfx: 'landline_ring', at: 'mk_store_phone' }, { t: 1.6, sfx: 'landline_ring', at: 'mk_store_phone' }, { t: 2.7, sfx: 'pickup', at: 'mk_store_phone', vol: 0.6 }] },
-      { cam: { type: 'static', at: { of: 'chase', off: [-0.62, 1.66, 1.1] }, look: 'chase.eyes', lens: 65, push: 0.05 }, focus: 'chase', hold: 0.3,
+      { cam: { type: 'static', at: { of: 'chase', off: [-0.74, 1.66, 1.36] }, look: 'chase.eyes', lens: 65, push: 0.05 }, focus: 'chase', hold: 0.3,
         lines: [{ who: 'wai', via: 'phone', text: "Heard a rumour you're chasing the record.", emote: 'smirk', pause: 0.5 }, { who: 'chase', text: "Heard a rumour you're not.", emote: 'smirk' },
           { who: 'wai', via: 'phone', text: "Queen Street's on two-sixty. We've got the foot traffic, mate. You've got pensioners and seagulls.", emote: 'smirk' },
           { who: 'chase', text: 'Pensioners buy phones.', emote: 'smile' }] },
       { cam: { type: 'static', at: { of: 'luke', off: [0.35, 1.6, 1.4] }, look: 'luke.eyes', lens: 50 }, focus: 'luke', hold: 0.2,
         actions: [{ t: 0.2, who: 'luke', do: 'lookAt', at: 'chase' }, { t: 0.4, who: 'luke', do: 'emote', name: 'smirk' }, { t: 1.2, who: 'luke', do: 'gesture', name: 'adjust_cap' }],
         lines: [{ who: 'wai', via: 'phone', text: 'Pensioners buy one phone. Every five years.', emote: 'smirk' }] },
-      { cam: { type: 'static', at: { of: 'chase', off: [-0.6, 1.66, 1.0] }, look: 'chase.eyes', lens: 65, push: 0.07 }, focus: 'chase', hold: 0.5,
+      { cam: { type: 'static', at: { of: 'chase', off: [-0.72, 1.66, 1.3] }, look: 'chase.eyes', lens: 65, push: 0.07 }, focus: 'chase', hold: 0.5,
         lines: [{ who: 'chase', text: "Then I'll sell 'em two.", emote: 'smile', pause: 0.2 }, { who: 'wai', via: 'phone', text: "Three-twelve and I'll believe it. Head office'll want a photo.", emote: 'laugh' },
           { who: 'chase', text: 'Get your camera ready.', emote: 'smirk' }] },
       // 6. He hangs up. His own phone: Bub.

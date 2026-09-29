@@ -224,7 +224,7 @@
     for (const s of [-1, 1]) Build.beam({ pos: [s * 0.62, 0.7, 2.3], dir: [s * 0.04, -0.05, 1], len: 16, r: 1.8, color: 0xfff0d0, opacity: 0.045, parent: body });
     Build.pool({ pos: [0, 0.02, -3.4], r: 1.6, color: 0xff2010, opacity: 0.25, parent: body, dynamic: true }).scale.set(1.4, 1, 1);
     // cabin light: the dash glow, a faint bounce off the roof lining
-    Build.light('point', { pos: [-0.1, 0.9, 0.98], parent: body, color: 0xff9a50, intensity: 0.5, distance: 2.1, decay: 2 });
+    Build.light('point', { pos: [-0.1, 0.9, 0.98], parent: body, color: 0xff9a50, intensity: 0.7, distance: 2.1, decay: 2 });
     Build.light('point', { pos: [-0.05, 0.98, -0.3], parent: body, color: 0x9a94a0, intensity: 0.28, distance: 2.4, decay: 2 });
     // a cardboard pine-tree freshener on a string from the mirror; it swings with the car
     const fresh = Build.group({ parent: body, pos: [0.04, 1.31, 0.45] }), tree = new THREE.Shape([[0, 0], [0.028, -0.03], [0.012, -0.03], [0.034, -0.062], [0.014, -0.062], [0.04, -0.1], [0.004, -0.1], [0.004, -0.115], [-0.004, -0.115], [-0.004, -0.1], [-0.04, -0.1], [-0.014, -0.062], [-0.034, -0.062], [-0.012, -0.03], [-0.028, -0.03]].map(p => new THREE.Vector2(p[0], p[1])));
@@ -632,7 +632,7 @@
       route();
       const D = A.data, r = U.rng(3107), W = batcher(), win = winMats(), figs = [];
       Object.assign(D, { s: S0, v: 10.5, acc: 0, run: false, stop: null, riders: new Map(), grip: { L: V(), R: V(), C: V(), K: V() }, chaseArm: 1, clip: new THREE.Plane(V(0, -1, 0), 1.1), people: [], blueSpots: [], win, loops: [] });
-      Build.hemi({ sky: 0x3a4868, ground: 0x1a120c, intensity: 0.55 });
+      Build.hemi({ sky: 0x3a4868, ground: 0x1a120c, intensity: 0.75 });
       buildCar(A);
       buildStreet(A);
       shops(A, W, win, figs, r); jetty(A, figs, r); suburbs(A, W, win, figs, r);
@@ -703,10 +703,14 @@
     G.fade('none', 0.8);
     const until = s => G.until(() => D.s >= s);
     const setRadio = txt => { D.radioText = txt; D.radioTex.userData.draw(); };
-    // 1 — the esplanade: people standing in the road, the jogger, the jetty
+    // 1 — the esplanade: people standing in the road, the jogger, the jetty (her eyes are drawn to each as it goes by)
+    await until(S_JOG - 8); Play.forceLook(D.jogger.point('head'), 0.45);
     await until(S_JOG);
     await G.say('bub', "Dad, what's wrong with them?", { emote: 'afraid', to: 'chase' });
     await G.say('chase', "Don't look.", { emote: 'tense', pause: 0.5, to: eyes });
+    Play.forceLook(null);
+    await until(S_JETTY - 12); Play.forceLook(A.w([22, 1.4, at(S_JETTY).z]), 0.4);
+    await until(S_JETTY + 16); Play.forceLook(null);
     // 2 — Luke brakes for the people in the road; a woman slaps her phone on Bub's window
     await until(S_CLUSTER - 70);
     luke.lookAt(() => D.woman.c.point('head')); luke.emote('afraid');

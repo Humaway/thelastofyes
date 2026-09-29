@@ -530,12 +530,12 @@
 
   // ---- P.2 — Bub -----------------------------------------------------------------------------------------------------
   HK['prologue.P2'] = async G => {
-    UI.hud({ show: false }); G.control(false);
+    UI.hud({ show: false }); G.control(false); G.player(null);   // (a retry: she was the player; nothing may drop her off the bed)
     const A = await stageHouse(G), D = A.data;
     const bub = G.actor('bub', 'bub', 'mk_bub_bed');
     for (const h of ['r', 'l']) if (bub.held(h)) bub.drop(h, { remove: true });
-    bub.pose('lie', { dur: 0.01 }); bub.emote('neutral'); bub.lookAt(A.w([-5.9, 2.4, -3.4]));
-    bub.ikT = { L: { p: A.w([-6.14, 0.7, -4.0]), w: 1 } };          // her left hand resting on her stomach
+    bub.pose('lie', { direct: true, dur: 0.01 }); bub.emote('neutral'); bub.lookAt(A.w([-5.9, 2.4, -3.4]));
+    bub.ikT = { L: { p: A.w([-6.14, 0.7, -4.0]), w: 1 }, R: { p: A.w([-6.5, 0.6, -3.72]), w: 1 } };   // left hand on her stomach, right by her side
     const ph = bub.hold('phone', 'r'); screen(ph, Tex.screen('lock', { time: '11:44' })); ph.visible = false;
     const bedPh = A.w([-5.72, 0.6, -4.02]);
     D.glowAt = o => o.copy(bedPh).setY(0.72);                       // the phone on the duvet by her hand lights her from the side
@@ -714,7 +714,7 @@
         actions: [{ t: 0.3, who: 'chase', do: 'lookAt', at: null }, { t: 0.4, who: 'chase', do: 'pose', name: 'phone' }, { t: 0.6, who: 'chase', do: 'emote', name: 'exhausted' }] },
       { cam: { type: 'extreme_close', who: 'chase', part: 'phone' }, dur: 2.8, focus: 'chase.hand_r',
         cues: [{ t: 0.2, ui: { phone: { kind: 'install', title: 'INFINITE', progress: 0.42, time: '11:59 PM' } } }] },
-      { cam: { type: 'static', at: { of: 'chase', off: [-1.15, 1.5, 1.6] }, look: { of: 'chase', off: [0.12, 1.22, 0.2] }, lens: 35 }, dur: 2.2, focus: 'chase',
+      { cam: { type: 'static', at: { of: 'chase', off: [-1.15, 1.55, 1.6] }, look: { of: 'chase', off: [0.1, 1.38, 0.2] }, lens: 35 }, dur: 2.2, focus: 'chase',
         actions: [{ t: 0.05, who: 'chase', do: 'pose', name: 'stand' }, { t: 0.1, who: 'chase', do: 'emote', name: 'angry' }, { t: 0.1, who: 'chase', do: 'gesture', name: 'slam_phone' }, { t: 0.72, do: 'call', hook: 'p3.slam' }],
         cues: [{ t: 0, ui: { phone: null } }, { t: 0.72, sfx: 'phone_slam', at: [-1.25, 1.02, -7.62], vol: 1 }, { t: 0.72, shake: 0.35, dur: 0.35 }] },
       { cam: { type: 'static', at: { of: 'luke', off: [0.45, 1.62, 1.3] }, look: 'luke.eyes', lens: 60 }, focus: 'luke', hold: 0.3,
@@ -800,7 +800,7 @@
   HK['p2.impact'] = G => {
     const A = P2(), D = A.data, nb = D.neighbour, chase = G.who('chase');
     D.table.userData.break();
-    nb.drop('r', { remove: true }); nb.stop(); G.place(nb, 'mk_nb_down'); nb.pose('lie', { dur: 0.2 }); nb.emote('shocked'); nb.lookAt(null);
+    nb.drop('r', { remove: true }); nb.stop(); G.place(nb, 'mk_nb_down'); nb.pose('lie', { direct: true, dur: 0.2 }); nb.emote('shocked'); nb.lookAt(null);
     D.floorPhone.visible = true;
     chase.stop(); chase.attach(nb, 'pin');
     for (const s of ['wood_crash', 'tackle', 'body_fall']) G.sfx(s, { pos: A.w([3.2, 0.4, 1.2]), vol: 1 });
@@ -850,7 +850,7 @@
       { cam: { type: 'two_shot', a: 'chase', b: 'bub', side: 'right', lens: 40 }, focus: 'chase', hold: 0.3,
         actions: [{ t: 0, who: 'chase', do: 'turnTo', to: 'bub', dur: 0.3 }, { t: 0.35, who: 'chase', do: 'attach', to: 'bub', mode: 'face_hold' }, { t: 0.4, who: 'bub', do: 'emote', name: 'crying' }],
         lines: [{ who: 'chase', text: 'You okay? Look at me. You okay?', emote: 'tense', pause: 0.9, to: 'bub' }] },
-      { cam: { type: 'static', at: { of: 'chase', off: [0.55, 1.25, 0.95] }, look: 'bub.eyes', lens: 50, push: 0.06 }, focus: 'bub', hold: 0.5,   // her face in his hands, from his right
+      { cam: { type: 'static', at: { of: 'chase', off: [-0.78, 1.62, -0.12] }, look: 'bub.eyes', lens: 50, push: 0.05 }, focus: 'bub', hold: 0.5,   // her face turned up in his hands, over his right wrist
         lines: [{ who: 'bub', text: 'He was trying to show me something.', emote: 'afraid', pause: 0.4, to: 'chase' }] },
       { cam: { type: 'ots', over: 'bub', on: 'chase', push: 0.08 }, focus: 'chase', hold: 0.4,
         lines: [{ who: 'chase', text: 'Don\'t look at anyone\'s hands. Anyone\'s. Car. Now.', emote: 'tense', pause: 0.3, to: 'bub' }] },

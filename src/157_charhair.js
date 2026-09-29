@@ -199,7 +199,7 @@ const CharHair = (() => {
   function cardMesh(B) {
     if (B.cards) { B.cards.parent.remove(B.cards); B.cards.geometry.dispose(); B.cards = null; }
     if (!B.cardGeo) return;
-    const m = new THREE.Mesh(B.cardGeo, cardMat(B.look.hair)); m.receiveShadow = true; m.frustumCulled = false;
+    const m = new THREE.Mesh(B.cardGeo, cardMat(B.look.hair)); m.receiveShadow = true;
     B.bones.head.add(m); B.cards = m; B.cardGeo = null;
   }
 

@@ -17,27 +17,31 @@
 // 1E — origin [1600,0,3000]; the grate at local x 0 (same cross-section: z −1.4..1.4, 2.4 high, floor y 0). The tunnel runs
 //   west: a street-drain shaft of light at x −14, the camp where someone waited it out (x −24..−30: tally, candles, a sleeping
 //   bag, the lost lanyard), luminous Landlines cords on the walls, silt and phones at the second grate (x −36), the outfall at
-//   x −50 into Ann Street, flooded shin-deep (x −50..−100). The COMMS dinghy and its spotlight; the drowned tower leaning
-//   over the city to the west (the way to 1F).
+//   x −50 into Ann Street, flooded knee-deep (x −50..−120). The COMMS dinghy and its spotlight; the drowned tower leaning
+//   over the far end of the street, south (the way to 1F).
 // Flow: ch1.5 hard-cuts from 1.4's held frame into 1D and plays 1.5; it blends out into gameplay (Chase in the basement, Chloe
-//   and Wai companions; the optional conversation and the collectibles). ch1.6 (checkpoint) sets all of that up again when it
-//   runs first; the walk-and-talk starts at the back door, pauses near the patrol, and ends with "Tunnel. Shut up." at the
-//   grate (the squeeze opens only then). The flow ends in the 1E tunnel near the outfall; ch1.7 plays scene 1.7, which ends
-//   HELD (exit hold, letterbox on) on the three of them wading off toward the drowned tower — 1.8 opens with a cut.
-// Markers (1D): mk_start · mk_15_* (1.5 blocking) · mk_16_chase / mk_16_chloe / mk_16_wai / mk_16_op (1.6 start) ·
-//   mk_1d_grate (the squeeze). (1E): mk_start · mk_1e_chase / mk_1e_chloe / mk_1e_wai (near the outfall) · mk_17_* (1.7) ·
-//   mk_17_end_* (where 1.7 leaves the three of them, in the street heading west).
-// Persistent actors: chase, wai (bruised; companion with his bat, a torch in the tunnel), chloe (companion from 1.6),
-//   operator (wounded; sits in her chair in 1D, hidden when 1D unloads). Area chars: landline (1D, at the radios),
-//   soldier / soldier_b (1E, the patrol in 1.7).
+//   and Wai companions; the optional conversation, the collectibles) and resolves at the back door ("e – open"). ch1.6
+//   (checkpoint) carries on from there, or sets it all up again at the back door: the walk-and-talk starts in lane A, stops at
+//   the end of a line while the patrol is close or the searchlight is on Chase and resumes after; "Tunnel. Shut up." at the
+//   grate opens the squeeze. 6 m into the culvert the area swaps to 1E (the same tube; everyone keeps their offsets) and
+//   ch1.6 hands over to ch1.6b (checkpoint: the tunnel; without a '1.6b' flow step ch1.6 carries on itself), which resolves
+//   near the outfall. ch1.7 plays scene 1.7, which ends HELD (exit hold, letterbox on) on the three of them wading off down
+//   Ann Street toward the drowned tower — 1.8 opens with a cut.
+// Markers (1D): mk_start · mk_15_* (1.5 blocking) · mk_16_chase / mk_16_chloe / mk_16_wai (1.6, at the back door) ·
+//   mk_1d_grate (the squeeze). (1E): mk_start, mk_1e_s_chloe, mk_1e_s_wai (1.6b, inside the grate) · mk_1e_chase /
+//   mk_1e_chloe / mk_1e_wai (near the outfall) · mk_17_* (1.7) · mk_17_end_* (where 1.7 leaves them, wading south).
+// Persistent actors: chase, wai (bruised; companion with his bat, a torch in the tunnel), chloe (companion from the end of
+//   1.5), operator (wounded; sits in her chair in 1D, hidden when 1D unloads). Area chars: landline (1D, at the radios),
+//   soldier / soldier_b (1E, the patrol in 1.7; dead in the water after it). Chloe's Badge (1, left forearm) is set in 1.7.
 // ============================================================================
 (() => {
   const PI = Math.PI, H = CONTENT.hooks, OD = [1200, 0, 3000], OE = [1600, 0, 3000];
   const M = (n, o) => Tex.mat(n, o), C = (h, o) => Tex.color(h, o);
   const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
-  const d = (x, y, z) => [OD[0] + x, y, OD[2] + z], e = (x, y, z) => [OE[0] + x, y, OE[2] + z];
+  const WD = (x, y, z) => [OD[0] + x, y, OD[2] + z], WE = (x, y, z) => [OE[0] + x, y, OE[2] + z];   // area-local → world (scenes)
   const PROFILE = { combat: true, hud: true, canCrouch: true, canJump: true, weapons: ['revolver', 'shotgun'], melee: 'fists', stats: 'chase' };
-  const GRATE_D = [-40, 0, 40], GRATE_E = [0, 0, 0];           // the same grate in both areas (local)
+  const BADGE = V(), BADGE_CAM = V(), _bn = V(), _bq = new THREE.Quaternion();   // Chloe's Badge and the camera square on it (1.7)
+  const chloeBadge = () => { const c = Game.who('chloe'); return c && c.badgeObj && c.badgeObj.mesh; };
   const GY_E = -0.36;                                            // Ann Street's roadway under the flood (1E)
   const SANS = '"Helvetica Neue", Helvetica, Arial, sans-serif';
   const once = (() => { const m = new Map(); return (k, fn) => { if (!m.has(k)) { const t = fn(); t.userData.shared = true; m.set(k, t); } return m.get(k); }; })();
@@ -92,7 +96,7 @@
     { who: 'chloe', text: 'Step one. "Greet the customer. Use their name and smile!"', emote: 'neutral', to: 'chase' },
     { who: 'chloe', text: 'Hi, Chase.', emote: 'smile', pause: 0.5, to: 'chase' },
     { who: 'chase', text: "Where'd you get that?", emote: 'neutral', pause: 0.6, to: 'chloe' },
-    { who: 'chloe', text: 'The depot. Every trainee gets one. Nobody reads it. I’ve read it forty times.', emote: 'smirk', to: 'chase' },
+    { who: 'chloe', text: "The depot. Every trainee gets one. Nobody reads it. I've read it forty times.", emote: 'smirk', to: 'chase' },
     { who: 'wai', text: 'The Yes Way. God, I wrote the quiz for that.', emote: 'laugh', to: 'chloe' },
     { who: 'chloe', text: 'You did not.', emote: 'shocked', to: 'wai' },
     { who: 'wai', text: 'Step five, handle objections, "every no is just a not yet". That was me.', emote: 'smirk', to: 'chloe' },
@@ -358,6 +362,7 @@
     Build.decal('blood', { floor: true, pos: [2.6, 0.007, 1.6], w: 0.9, h: 0.7, spin: 0.5, opacity: 0.8 });
     Build.box(0.2, 0.03, 0.14, C(0xd8c8c0, { rough: 0.95 }), { pos: [2.55, 0.745, 1.25], yaw: 0.6, solid: false, ao: false });
     Build.prop('rubbish_bag', { pos: [3.4, 0, 0.5], n: 2 });
+    Build.prop('lamp', { kind: 'desk', pos: [1.65, 0.74, 1.3], yaw: 0.5, on: true, light: 2.2 });   // the first-aid table
     // the office that was: desks stacked against the wall, a dead plant, a whiteboard with the run
     Build.prop('filing_cabinet', { pos: [-0.8, 0, 13.6], yaw: PI, open: 1 });
     Build.prop('filing_cabinet', { pos: [-0.2, 0, 13.6], yaw: PI });
@@ -443,6 +448,8 @@
     Build.decal(Tex.graffiti('', { style: 'cord', color: '#e8e2cf', w: 256, h: 256 }), { pos: [-8.4, 1.35, 30], yaw: PI / 2, w: 0.55, h: 0.55 });
     Build.decal(Tex.graffiti("GONE 99 DON'T OPEN", { style: 'drip', color: '#c8161d', w: 1024, h: 256 }), { pos: [-2.56, 1.4, 31.5], yaw: -PI / 2, w: 2.4, h: 0.6 });
     Build.box(0.08, 2.1, 1.0, M('metal_painted', { color: 0x5a3a2a }), { pos: [-2.5, 0, 31.5], solid: false });
+    Build.prop('ceiling_light', { kind: 'caged', pos: [-2.75, 2.55, 30.4], on: true, color: 0xc8e0d0 });   // someone's work light, still on a battery
+    Build.light('point', { pos: [-3.2, 2.4, 30.4], color: 0xa8c8c0, intensity: 3.5, distance: 11, decay: 1.3, flicker: 0.25 });
     Build.tree('fig', { pos: [-7.3, 0, 35.2], scale: 0.28, seed: 31 });
     Build.vines({ box: [-8.45, 2, 33, -8.4, 11, 36], density: 1, seed: 32, hang: true });
     Build.vines({ box: [-3.05, 6, 14.5, -2.55, 11, 22], density: 0.7, seed: 33, hang: true });
@@ -582,21 +589,22 @@
     build(A) {
       const D = A.data, r = U.rng(312);
       D.fresh = true; D.tweens = [];
-      D.hemi = Build.hemi({ sky: 0x4a5a66, ground: 0x14120e, intensity: 0.55 });
+      D.hemi = Build.hemi({ sky: 0x4a5a66, ground: 0x14120e, intensity: 0.75 });
       nightSky(A, [-20, -40, 30], [[20, -120, 160, 200, 34, false], [-420, -200, -120, 250, 40, true]], [-300, -30]);
       basement(A, r); lanes(A, r); wallApron(A, r); culvert(A, -40, 40, 18);
       Build.box(0.2, 2.4, 2.8, C(0x000000), { pos: [-58.2, 0, 40], solid: false, ao: false, shadow: false });
       // light: the bare bulb is the key (and the area's one shadow caster); the radios, the map lamp, the stairwell
-      D.key = Build.light('spot', { pos: [0.2, 2.55, 7.25], target: [0.2, 0, 7.3], color: 0xffc27a, intensity: 26, distance: 11, angle: 1.05, penumbra: 0.7, decay: 1.3, shadow: true });
-      Build.light('point', { pos: [0.2, 2.3, 7.25], color: 0xffb46a, intensity: 1.6, distance: 6, decay: 1.4 });
+      D.key = Build.light('spot', { pos: [0.2, 2.55, 7.25], target: [0.2, 0, 7.3], color: 0xffc27a, intensity: 10, distance: 11, angle: 1.1, penumbra: 0.8, decay: 1.3, shadow: true });
+      Build.light('point', { pos: [0.4, 2.1, 6.2], color: 0xffb46a, intensity: 2.6, distance: 9, decay: 1.3 });
       Build.light('point', { pos: [6.3, 1.2, 8.2], color: 0xff9a48, intensity: 2.2, distance: 4.5, decay: 1.5, flicker: 0.12 });
       Build.light('point', { pos: [4.0, 1.7, 12.8], color: 0xffd6a0, intensity: 3.2, distance: 5.5, decay: 1.5 });
-      Build.light('point', { pos: [5.7, 5.2, -5.4], color: 0x8ea0b8, intensity: 5, distance: 9, decay: 1.4 });
+      Build.light('point', { pos: [5.7, 2.7, -2.4], color: 0x8ea0b8, intensity: 5, distance: 10, decay: 1.3 });   // the street door's cold light down the stairs
       D.rain = Build.rain({ area: 30, count: 3200, color: 0x8aa0b0, speed: 12 });
       Build.dust({ box: [-7, 0.3, 1, 7, 2.7, 13], count: 200, color: 0xffe0b8, size: 0.014, opacity: 0.35 });
       // stealth, nav, hints (hold T): back door → lane A → lane B → the apron → the grate
-      A.navBounds(-44, -1, 9, 57);
-      A.patrol('c1d_lane', [[-30, 0, 40.5], [-6, 0, 40], [-6.2, 0, 39.3], [-30, 0, 39.6]]);
+      A.navBounds(-59, -1, 9, 57);
+      A.patrol('c1d_lane_a', [[-6.8, 0, 40.3], [-29.8, 0, 40.7]]);
+      A.patrol('c1d_lane_b', [[-7.6, 0, 39.2], [-29.2, 0, 39.3]]);
       A.hint([[-5.5, 0, 15], [-5.5, 0, 36], [-14, 0, 39.5], [-33, 0, 40], [-38.8, 0, 39.2]]);
       // pickups: scarce, where people left them
       A.pickup({ at: [-2.2, 0.76, 0.9], item: 'cloth' });
@@ -616,10 +624,10 @@
       D.landline.pose('sit', { direct: true, dur: 0.01 });
       // marks (area-local)
       for (const [n, p, yaw] of [['mk_start', [-4.8, 0, 11.6], PI / 2], ['mk_1d_grate', [-38.9, 0, 39.2], -PI / 2],
-        ['mk_15_chloe', [0.2, 0, 7.42], PI + 0.1], ['mk_15_in_chase', [5.6, 0, -0.9], 0], ['mk_15_in_wai', [5.7, 0.9, -2.2], 0], ['mk_15_in_op', [5.6, 0, 0.35], 0],
+        ['mk_15_chloe', [0.2, 0, 7.42], PI + 0.1], ['mk_15_in_chase', [5.6, 0.37, -0.9], 0], ['mk_15_in_wai', [5.7, 1.17, -2.2], 0], ['mk_15_in_op', [5.6, 0, 0.35], 0],
         ['mk_15_chase', [1.05, 0, 4.25], -0.28], ['mk_15_wai', [2.75, 0, 3.75], -0.62], ['mk_15_op', [2.35, 0, 5.3], -0.9], ['mk_15_op_chair', [4.7, 0, 8.55], -1.95],
-        ['mk_15_chloe_op', [3.75, 0, 7.95], 1.1], ['mk_15_chloe_end', [0.9, 0, 6.2], PI + 0.5],
-        ['mk_16_chase', [0.7, 0, 4.9], -0.4], ['mk_16_chloe', [0.9, 0, 6.3], -2.6], ['mk_16_wai', [2.8, 0, 4.2], -0.9]]) A.marker(n, p, yaw);
+        ['mk_15_chloe_op', [3.75, 0, 7.95], 1.0], ['mk_15_chloe_bag', [0.95, 0, 7.15], -2.8],
+        ['mk_16_chase', [-4.9, 0, 12.3], -0.34], ['mk_16_chloe', [-3.9, 0, 11.2], -0.6], ['mk_16_wai', [-3.1, 0, 12.3], -0.9]]) A.marker(n, p, yaw);
       // weather and life: lightning, thunder, the radios crackling and their dials breathing, the searchlight's sweep
       D.flashT = 8;
       D.loops = [Audio.loop('drips', { pos: A.w([-5.5, 1, 13]), vol: 0.4 }), Audio.loop('tape_hiss', { pos: A.w([7.2, 1.1, 8.2]), vol: 0.35 })];
@@ -629,13 +637,23 @@
         for (const k of D.dials) k.material.emissiveIntensity = 1.5 + Math.sin(t * 3.1) * 0.35;
         if ((D.flashT -= dt) <= 0) { D.flashT = 16 + Math.random() * 20; D.flash0 = t; Audio.sfx('thunder', { pos: A.w([-60, 60, 30 + Math.random() * 40]), vol: 0.8 }); }
         const f = D.flash0 != null ? t - D.flash0 + 1.4 : 9, k = f < 0.1 ? 1 : f < 0.18 ? 0.2 : f < 0.3 ? 0.8 : f < 0.8 ? U.lerp(0.8, 0, (f - 0.3) / 0.5) : 0;
-        D.hemi.intensity = 0.55 * (1 + k * 2.5); D.sky.material.color.setScalar(1 + k * 2);
+        D.hemi.intensity = 0.75 * (1 + k * 2.5); D.sky.material.color.setScalar(1 + k * 2);
         if ((D.crackT = (D.crackT ?? 3) - dt) <= 0) { D.crackT = 2 + Math.random() * 5; Audio.sfx(Math.random() < 0.6 ? 'radio_static' : 'radio_click', { pos: A.w([7.2, 1.1, 8]), vol: 0.3 }); }
         searchlight(A, dt);
+        if (D.opWound) wound(D.opWound);
+        if (D.part === 'lanes') {   // the walk-and-talk stops (at the end of a line) while the patrol is close or the light is on him
+          const pl = Play.char, near = pl && AI.list.some(a => a.alive && !a.companion && a.faction === 'comms' && a.char.root.position.distanceTo(pl.root.position) < 14);
+          D.calm = !near && AI.alertLevel < 0.3 && D.searchS.heat < 0.02;
+          if (D.calm) Dialogue.resume(); else Dialogue.interrupt();
+        }
         if (D.tweens.length) D.tweens = D.tweens.filter(fn => !fn(dt));
       });
     },
-    unload(A) { for (const l of A.data.loops) l.stop(0.4); },
+    unload(A) {
+      for (const l of A.data.loops) l.stop(0.4);
+      const op = A.data.opWound; if (op) { op.ikT = {}; op.setVisible(false); }
+      Dialogue.resume(); UI.prompt(null);
+    },
   });
 
   // the searchlight: a slow sweep of the apron. Standing in its pool fills an arc (slower crouched); full, the tower fires.
@@ -652,7 +670,8 @@
     D.searchHead.lookAt(OD[0] + x, 0, OD[2] + z);
     const pl = Play.char;
     if (!pl || Director.active || !Play.enabled) { S.heat = Math.max(0, S.heat - dt); return; }
-    const p = pl.root.position, lit = Math.hypot(p.x - OD[0] - x, p.z - OD[2] - z) < 2.3 && p.x - OD[0] > -39.4;
+    const p = pl.root.position, lx = p.x - OD[0], lz = p.z - OD[2];
+    const lit = Math.hypot(lx - x, lz - z) < 2.3 && lx > -39.4 && !(lx < -38.2 && Math.abs(lz - 40) < 1.7);   // the headwall's shadow is safe
     S.heat = U.clamp(S.heat + (lit ? dt / (Play.crouched ? 1.4 : 0.9) : -dt * 0.6), 0, 1);
     if (S.heat > 0.02) { Engine.camera.getWorldDirection(_s); UI.detect(U.wrapAngle(Math.atan2(_s.x, _s.z) - U.yawTo(Engine.camera.position, D.tower)), S.heat); }
     if (S.heat >= 1 && (S.fireT -= dt) <= 0) {
@@ -805,7 +824,8 @@
     build(A) {
       const D = A.data, r = U.rng(313);
       D.fresh = true; D.tweens = [];
-      D.hemi = Build.hemi({ sky: 0x3e4c58, ground: 0x0e0e0c, intensity: 0.5 });
+      D.hemi = Build.hemi({ sky: 0x44566a, ground: 0x0e0e0c, intensity: 0.85 });
+      Build.light('point', { pos: [-64, 28, -62], color: 0x4a7ac8, intensity: 45, distance: 150, decay: 1 });   // the screen-rot glow of the tower
       nightSky(A, [-60, -40, 0], [[40, -200, 300, 200, 30, false], [-420, -300, -90, 300, 60, true], [-90, 60, 60, 300, 12, true], [-90, -300, 60, -90, 12, true]], [-57, -190, -6]);
       tunnelE(A, r); streetE(A, r);
       D.rain = Build.rain({ area: 30, count: 3600, color: 0x8aa0b0, speed: 12 });
@@ -819,20 +839,479 @@
       D.soldier = A.char('soldier', { name: 'soldier', at: [-57.6, GY_E, -2.6], yaw: 1.25, seed: 71 });
       D.soldierB = A.char('soldier', { name: 'soldier_b', at: [-56.8, GY_E, 3.6], yaw: 2.2, seed: 72 });
       for (const s of [D.soldier, D.soldierB]) s.setVisible(false);
-      for (const [n, p, yaw] of [['mk_start', [-3, 0, 0], -PI / 2], ['mk_1e_chase', [-40, 0, 0], -PI / 2], ['mk_1e_chloe', [-38, 0, 0.6], -PI / 2], ['mk_1e_wai', [-37.5, 0, -0.6], -PI / 2],
-        ['mk_17_chase_in', [-47.6, 0, 0.2], -PI / 2], ['mk_17_wai_in', [-46.4, 0, -0.5], -PI / 2], ['mk_17_chloe_in', [-45.3, 0, 0.5], -PI / 2],
+      for (const [n, p, yaw] of [['mk_start', [-3, 0, 0], -PI / 2], ['mk_1e_s_chloe', [-1.5, 0, -0.7], -PI / 2], ['mk_1e_s_wai', [-1.1, 0, 0.7], -PI / 2],
+        ['mk_1e_chase', [-45, 0, 0], -PI / 2], ['mk_1e_chloe', [-43, 0, 0.6], -PI / 2], ['mk_1e_wai', [-42.5, 0, -0.6], -PI / 2],
+        ['mk_17_chase_in', [-48.4, 0, 0.2], -PI / 2], ['mk_17_chloe_in', [-47.2, 0, -0.5], -PI / 2], ['mk_17_wai_in', [-46.3, 0, 0.5], -PI / 2],
         ['mk_17_wai', [-53.3, GY_E, 2.1], -PI / 2 - 0.25], ['mk_17_chase', [-53.6, GY_E, 0.6], -PI / 2], ['mk_17_chloe', [-53.3, GY_E, -0.9], -PI / 2 + 0.2],
         ['mk_17_s1', [-57.6, GY_E, -2.6], 1.25], ['mk_17_s2', [-56.8, GY_E, 3.6], 2.2], ['mk_17_scan_wai', [-54.35, GY_E, 2.25], PI / 2], ['mk_17_scan_chase', [-54.6, GY_E, 0.75], PI / 2],
-        ['mk_17_scan_chloe', [-54.3, GY_E, -0.95], PI / 2 - 0.1],
-        ['mk_17_end_chase', [-56, GY_E, -9], PI], ['mk_17_end_chloe', [-55, GY_E, -7.5], PI], ['mk_17_end_wai', [-57.2, GY_E, -7.8], PI]]) A.marker(n, p, yaw);
+        ['mk_17_scan_chloe', [-54.3, GY_E, -0.95], PI / 2 - 0.1], ['mk_17_s1_near', [-56.0, GY_E, -1.2], 0.9], ['mk_17_chase_b', [-54.0, GY_E, -0.25], -2.8], ['mk_17_chase_c', [-54.1, GY_E, -0.35], 2.17],
+        ['mk_17_end_chase', [-56.2, GY_E, -17], PI], ['mk_17_end_chloe', [-55.2, GY_E, -15.4], PI], ['mk_17_end_wai', [-57.3, GY_E, -15.8], PI]]) A.marker(n, p, yaw);
       D.loops = [Audio.loop('drips', { pos: A.w([-24, 1.5, 0]), vol: 0.6 }), Audio.loop('water_lap', { pos: A.w([-52, 0, 0]), vol: 0.5 }), Audio.loop('rain', { pos: A.w([-14, 4, 0]), vol: 0.35 })];
       A.update((dt, t) => {
         const cam = Engine.camera.position, lx = cam.x - OE[0], lz = cam.z - OE[2];
         D.rain.visible = !(lx > -50.2 && lx < 1 && Math.abs(lz) < 2.9 && cam.y < 2.8);
         D.rotGlow.material.opacity = 0.7 + Math.sin(t * 2.3) * 0.08 + Math.sin(t * 7.1) * 0.05;
+        const b = Director.active && chloeBadge();
+        if (b) { b.getWorldPosition(BADGE); b.getWorldQuaternion(_bq); _bn.set(0, 0, 1).applyQuaternion(_bq); BADGE_CAM.copy(BADGE).addScaledVector(_bn, 0.3); BADGE_CAM.y += 0.16; }
         if (D.tweens.length) D.tweens = D.tweens.filter(fn => !fn(dt));
       });
     },
     unload(A) { for (const l of A.data.loops) l.stop(0.4); },
   });
+
+  // ==========================================================================================================================
+  // Flow helpers
+  // ==========================================================================================================================
+  const comp = c => AI.list.find(a => a.companion && a.char === c);
+  const pp = () => Play.char.root.position;
+  const hasStep = id => CONTENT.chapters.ch1.steps.some(s => s.id === id);
+  const variant = (c, v) => { if (!(c.B && c.B.look && String(c.B.look.key).endsWith(':' + v))) c.outfit(v); };
+  const settle = () => { for (let i = 0; i < 8; i++) Chars.update(1 / 30); };
+  function reset(c) {
+    const ag = comp(c); if (ag) ag.dismiss();
+    c.stop(); c.detach(); if (c.pairOf) c.pairOf.detach(); c.gesture(null); c.lookAt(null); c.emote('neutral'); c.setVisible(true); c.ikT = {}; c.lookBody = null;
+    for (const h of ['r', 'l']) if (c.held(h)) c.drop(h, { remove: true });
+    c.pose('stand', { direct: true, dur: 0.01 });
+  }
+  function kit() { if (!Play.inventory.weapons.includes('revolver')) { Play.give('revolver', 1); Play.give('revolver_ammo', 4); } }
+  // Chase, Wai and Chloe, clean: Wai bruised, Chloe with her backpack on and the sweatband down over her arm
+  function trio(G) {
+    const chase = G.actor('chase', 'chase'), wai = G.actor('wai', 'wai'), chloe = G.actor('chloe', 'chloe');
+    for (const c of [chase, wai, chloe]) reset(c);
+    variant(wai, 'bruised');
+    if (chloe.parts.backpack === false) chloe.setPart('backpack', true);
+    if (chloe.parts.sweatband === 'up') chloe.setPart('sweatband', 'down');
+    return { chase, wai, chloe };
+  }
+  function operator(G) { const op = G.actor('operator', 'operator'); reset(op); variant(op, 'wounded'); op.decal('fever'); return op; }
+  function seat(G, op) { G.place(op, 'mk_15_op_chair'); op.pose('sit', { direct: true, dur: 0.01 }); }
+  function follow(G) {
+    const wai = G.who('wai'), chloe = G.who('chloe');
+    if (!wai.held('r')) wai.hold('bat', 'r');
+    AI.companion(wai, { role: 'wai' }); AI.companion(chloe, { role: 'chloe' });
+  }
+  // the Operator's free hand pressed to the blood on her cardigan (every frame while she is in 1D)
+  const _f = V(), _wp = V();
+  function wound(c) {
+    U.fwd(c.yaw, _f);
+    c.point('chest', _wp).addScaledVector(_f, 0.13); _wp.x += _f.z * 0.07; _wp.z -= _f.x * 0.07; _wp.y -= 0.24;
+    const k = c.ikT || (c.ikT = {});
+    if (k.L) k.L.p.copy(_wp); else k.L = { p: _wp.clone(), w: 1 };
+  }
+  // on their knees in the flood with their hands up; Chloe keeps her left arm behind her back (registered once)
+  function poses() {
+    const P = Anim.POSES, up = { arm: [0.25, 1.35, 0.9], fore: [1.35, 0.4], hand: [-0.3, 0] };
+    if (!P.kneel_hands) P.kneel_hands = { p: Anim.mk(Object.assign({ fing: 0.05, fing2: 0.05, thumb: 0.1, clav: [0.12, 0], chest: [-0.05, 0, 0] }, up), P.kneel.p) };
+    if (!P.kneel_arm) P.kneel_arm = { p: Anim.mk({ armL: [0.7, -0.1, -0.4], foreL: [1.7, 1.3], handL: [0.1, 0], fingL: 0.3 }, P.kneel.p) };   // her forearm held out, the Badge up
+    if (!P.kneel_hide) P.kneel_hide = { p: Anim.mk({ armR: up.arm, foreR: up.fore, handR: up.hand, fingR: 0.05, fing2R: 0.05, armL: [-0.5, -0.1, 0.3], foreL: [1.45, 0.4], handL: [0.3, 0.2], fingL: 0.6 }, P.kneel.p) };
+  }
+  async function load(G, id, part) {
+    let A = G.areaById(id);
+    if (A && !A.data.fresh) G.unload(id);          // a retry: a clean area (the death fade covers it)
+    A = await G.area(id);
+    A.data.fresh = false; A.data.part = part;
+    return A;
+  }
+
+  // ==========================================================================================================================
+  // 1.5 — The Package (then the basement in gameplay: the optional conversation, the collectibles, the back door)
+  // ==========================================================================================================================
+  H['ch1.5'] = async G => {
+    const A = await load(G, '1D', 'scene');
+    const { chase, wai, chloe } = trio(G), op = operator(G);
+    G.place(chase, 'mk_15_in_chase'); G.place(wai, 'mk_15_in_wai'); G.place(op, 'mk_15_in_op'); G.place(chloe, 'mk_15_chloe');
+    wai.hold('bat', 'r');
+    chloe.setPart('backpack', false); chloe.hold('manual', 'l'); chloe.hold('box_cutter', 'r');
+    chloe.pose('sit', { direct: true, dur: 0.01 });
+    A.data.opWound = op; op.lookBody = 0.35;                  // her eyes do most of the looking
+    kit(); G.player(chase, { hud: false }); G.control(false); UI.prompt(null);
+    settle();
+    await G.scene('1.5');
+    G.control(true);
+    basementTalk(G, A);
+    await G.interact({ at: [-5.5, 0, 13.45], r: 1.3, prompt: 'e – open' });
+    H['c1d.door'](G);
+  };
+  // Landlines basement (Chloe and Wai; Chase listens): "e – talk" at Chloe while the two of them are together
+  function basementTalk(G, A) {
+    const chloe = G.who('chloe'), wai = G.who('wai');
+    const it = A.interactable({ at: [0, 0, 0], r: 1.8, prompt: 'e – talk',
+      cond: () => A.data.part === 'free' && !Dialogue.busy && chloe.root.position.distanceTo(wai.root.position) < 7,
+      use: async () => {
+        const ags = [comp(chloe), comp(wai)];
+        for (const a of ags) if (a) a.hold(true);
+        chloe.turnTo(wai, 0.6); wai.turnTo(chloe, 0.6);
+        await Dialogue.optional('c1d.basement');
+        for (const a of ags) if (a) a.hold(false);
+      } });
+    A.update(() => { if (!it.used) it.pos.copy(chloe.root.position); });
+  }
+  H['c1d.door'] = G => {
+    const A = G.areaById('1D'); if (!A) return;
+    const d = A.data.backDoor; let t = 0;
+    Audio.sfx('door_open', { pos: A.w([-5.5, 1, 14]), vol: 0.6 });
+    A.data.tweens.push(dt => { t += dt; d.userData.setOpen(0.92 * U.smooth(Math.min(1, t / 0.9))); return t > 0.9; });
+  };
+  H['c15.bag'] = G => {   // the manual into her back pocket, the cutter away, the backpack on
+    const A = G.areaById('1D'), chloe = G.who('chloe');
+    for (const h of ['l', 'r']) if (chloe.held(h)) chloe.drop(h, { remove: true });
+    if (chloe.parts.backpack === false) chloe.setPart('backpack', true);
+    if (A) A.data.bag.visible = false;
+  };
+  H['c15.end'] = G => {   // the end state (also on skip): the Operator in her chair, Chase in control, the two of them following
+    const A = G.areaById('1D'); if (!A) return;
+    H['c15.bag'](G);
+    const op = G.who('operator'); if (op.poseName !== 'sit') seat(G, op);
+    kit(); G.player(G.who('chase'), PROFILE); follow(G);
+    A.data.part = 'free';
+  };
+
+  // Blocking (1D local): Chloe on the crate under the bulb (0.2, 7.4) facing the stairs; Chase (1.05, 4.25) and Wai (2.75, 3.75)
+  // come in off the stairwell (door x 5.6, z 0) behind the Operator (2.35, 5.3), who then sits in her chair (4.7, 8.55).
+  // Chase–Chloe is shot from the east of their line, Chase–Operator from the south-east.
+  const L = WD;
+  CONTENT.scenes['1.5'] = {
+    title: 'The Package', area: '1D', grade: 'qz_green', start: { cut: true },
+    cast: { chase: 'mk_15_in_chase', wai: 'mk_15_in_wai', operator: 'mk_15_in_op', chloe: 'mk_15_chloe' },
+    shots: [
+      // the radios: static, a click, the dials breathing; the Landline hunched over the sets
+      { cam: { type: 'static', at: L(6.15, 1.32, 7.05), look: L(7.25, 1.0, 8.35), lens: 42, push: 0.03 }, dur: 3.4, focus: L(7.15, 1.05, 8.4),
+        cues: [{ t: 0.1, sfx: 'radio_static', at: L(7.2, 1.1, 8.3), vol: 0.7 }, { t: 1.9, sfx: 'radio_click', at: L(7.2, 1.1, 8.6), vol: 0.6 }, { t: 2.5, sfx: 'radio_static', at: L(7.2, 1.1, 7.2), vol: 0.4 }] },
+      // down from the bare bulb to Chloe on her crate: the dog-eared manual, the box cutter clicking; a door upstairs
+      { cam: { type: 'crane', from: L(0.6, 2.35, 5.85), to: L(0.5, 1.22, 6.1), look: L(0.2, 2.5, 7.25), lookTo: L(0.15, 0.98, 7.25), lens: 32, dur: 5.6 }, dur: 6.6, focus: 'chloe',
+        actions: [{ t: 0.8, who: 'chloe', do: 'gesture', name: 'click_cutter' }, { t: 3.3, who: 'chloe', do: 'gesture', name: 'click_cutter' }, { t: 5.7, who: 'chloe', do: 'lookAt', at: L(5.2, 1.7, 0.6) }],
+        cues: [{ t: 1.0, sfx: 'box_cutter', at: 'chloe.hand_r', vol: 0.5 }, { t: 2.2, sfx: 'page_turn', at: 'chloe.hand_l', vol: 0.4 }, { t: 3.5, sfx: 'box_cutter', at: 'chloe.hand_r', vol: 0.5 },
+          { t: 4.9, sfx: 'door_open', at: L(5.7, 4.2, -6.6), vol: 0.5 }] },
+      // over her shoulder: the Operator comes in off the stairs, Chase behind her, Wai last with his bat
+      { cam: { type: 'static', at: L(-0.6, 1.35, 8.1), look: L(4.4, 1.25, 1.4), lens: 30 }, dur: 6.2, focus: { rack: ['chloe', 'operator'], at: 0.6, dur: 1.2 },
+        actions: [{ t: 0, who: 'operator', do: 'walkTo', path: [L(5.3, 0, 1.3), 'mk_15_op'], speed: 1.05, yaw: -0.9 },
+          { t: 0.8, who: 'chase', do: 'walkTo', path: [L(5.6, 0, -0.1), L(5.0, 0, 1.3), 'mk_15_chase'], speed: 1.3, yaw: -0.28 },
+          { t: 1.5, who: 'wai', do: 'walkTo', path: [L(5.6, 0, -0.2), L(4.8, 0, 1.4), 'mk_15_wai'], speed: 1.3, yaw: -0.62 },
+          { t: 0.4, who: 'chloe', do: 'lookAt', at: 'operator' }, { t: 3.4, who: 'chloe', do: 'lookAt', at: 'chase' }] },
+      { cam: { type: 'close', who: 'chloe', push: 0.04 }, hold: 0.3,
+        lines: [{ who: 'chloe', text: "Oh. You're the smuggler.", emote: 'smirk', pause: 0.4, to: 'chase' }] },
+      { cam: { type: 'ots', over: 'chloe', on: 'chase', side: 'right', push: 0.03 }, hold: 0.25,
+        lines: [{ who: 'chase', text: 'No.', emote: 'neutral', pause: 0.5, to: 'operator' }] },
+      { cam: { type: 'ots', over: 'chase', on: 'operator', side: 'left', push: 0.04 }, hold: 0.25,
+        lines: [{ who: 'operator', text: "You haven't heard the offer.", emote: 'neutral', pause: 0.3, to: 'chase' }] },
+      { cam: { type: 'ots', over: 'operator', on: 'chase', push: 0.04 }, hold: 0.2,
+        lines: [{ who: 'chase', text: "It's a kid.", emote: 'tense', pause: 0.3, to: 'operator' }] },
+      { cam: { type: 'close', who: 'chloe', push: 0.05 }, hold: 0.2,
+        lines: [{ who: 'chloe', text: "I'm eighteen.", emote: 'tense', pause: 0.2, to: 'chase' }] },
+      { cam: { type: 'ots', over: 'chloe', on: 'chase', push: 0.04 }, hold: 0.3,
+        actions: [{ t: 0.05, who: 'chloe', do: 'gesture', name: 'click_cutter' }], cues: [{ t: 0.3, sfx: 'box_cutter', at: 'chloe.hand_r', vol: 0.5 }],
+        lines: [{ who: 'chase', text: "It's a kid with a box cutter.", emote: 'neutral', pause: 0.6, to: 'chloe' }] },
+      // low, under the bulb: she clicks it shut and stands, and steps up to him
+      { cam: { type: 'static', at: L(0.95, 0.95, 5.35), look: L(0.3, 1.38, 7.2), lens: 34, push: 0.05 }, hold: 0.4, focus: 'chloe',
+        actions: [{ t: 0, who: 'chloe', do: 'gesture', name: 'click_cutter' }, { t: 0.55, who: 'chloe', do: 'stand' }, { t: 1.3, who: 'chloe', do: 'walkTo', at: L(0.4, 0, 6.6), speed: 0.8, yaw: 2.87 }],
+        cues: [{ t: 0.25, sfx: 'box_cutter', at: 'chloe.hand_r', vol: 0.55 }],
+        lines: [{ who: 'chloe', text: 'Trainee. Ration depot, Albert Street. Three years. I can do inventory and I can do you.', emote: 'smirk', pause: 1.6, to: 'chase' }] },
+      { cam: { type: 'close', who: 'wai', push: 0.04 }, hold: 0.2,
+        lines: [{ who: 'wai', text: 'I like her.', emote: 'laugh', pause: 0.3, to: 'chloe' }] },
+      { cam: { type: 'close', who: 'chase', push: 0.03 }, hold: 0.2,
+        lines: [{ who: 'chase', text: 'You like everyone.', emote: 'neutral', pause: 0.2, to: 'wai' }] },
+      { cam: { type: 'ots', over: 'chase', on: 'chloe', push: 0.05 }, hold: 0.3,
+        actions: [{ t: 0.05, who: 'chloe', do: 'lookAt', at: 'chase.feet' }, { t: 0.95, who: 'chloe', do: 'lookAt', at: 'chase' }],
+        lines: [{ who: 'chloe', text: 'You look like a sad uncle at a barbecue.', emote: 'smirk', pause: 1.3, to: 'chase' }] },
+      { cam: { type: 'ots', over: 'chloe', on: 'chase', push: 0.06 }, hold: 0.6,
+        lines: [{ who: 'chase', text: 'And you look like a delay.', emote: 'neutral', pause: 0.4, to: 'chloe' }] },
+      // wide: the Operator crosses to her chair and lowers herself into it
+      { cam: { type: 'static', at: L(-4.9, 1.8, 2.3), look: L(3.0, 1.0, 7.6), lens: 24 }, dur: 6.0, focus: 'operator',
+        actions: [{ t: 0.2, who: 'operator', do: 'walkTo', path: [L(3.6, 0, 6.6), 'mk_15_op_chair'], speed: 1.0, yaw: -1.95 }, { t: 0.5, who: 'operator', do: 'emote', name: 'exhausted' },
+          { t: 4.8, who: 'operator', do: 'sit' }, { t: 4.8, who: 'operator', do: 'emote', name: 'tense' }, { t: 0.8, who: 'wai', do: 'lookAt', at: 'operator' }, { t: 1.2, who: 'chloe', do: 'lookAt', at: 'operator' }],
+        cues: [{ t: 5.1, sfx: 'creak', at: L(4.7, 0.5, 8.55), vol: 0.5 }] },
+      { cam: { type: 'static', at: L(3.15, 1.22, 7.3), look: L(4.68, 1.12, 8.5), lens: 45, push: 0.05 }, hold: 0.4, focus: 'operator',
+        lines: [{ who: 'operator', text: 'My people are waiting at the old flagship in the Queen Street Mall. Tonight.', emote: 'exhausted', pause: 0.6, to: 'chase' },
+          { who: 'operator', text: "They'll take her the rest of the way. You get your stock, doubled, the moment she's handed over.", emote: 'neutral', pause: 0.4, to: 'chase' }] },
+      { cam: { type: 'close', who: 'wai', push: 0.03 }, hold: 0.2,
+        lines: [{ who: 'wai', text: "What's so special about her?", emote: 'neutral', pause: 0.3, to: 'operator' }] },
+      { cam: { type: 'close', who: 'operator', push: 0.04 }, hold: 0.3,
+        lines: [{ who: 'operator', text: "She's important.", emote: 'neutral', pause: 0.3, to: 'wai' }] },
+      { cam: { type: 'close', who: 'chase', push: 0.04 }, hold: 0.3,
+        lines: [{ who: 'chase', text: "Everybody's important to somebody.", emote: 'sad', pause: 0.4, to: 'operator' }] },
+      { cam: { type: 'close', who: 'operator', push: 0.08 }, hold: 0.7,
+        lines: [{ who: 'operator', text: 'Not like this.', emote: 'tense', pause: 0.5, to: 'chase' }] },
+      // the two women by her chair, Chase and Wai soft behind them
+      { cam: { type: 'static', at: L(5.45, 1.2, 9.95), look: L(3.3, 0.98, 7.4), lens: 40 }, hold: 0.3, focus: 'chloe',
+        actions: [{ t: 0.1, who: 'chloe', do: 'walkTo', path: [L(2.3, 0, 7.5), 'mk_15_chloe_op'], speed: 1.1, yaw: 1.0 }, { t: 0.2, who: 'chloe', do: 'lookAt', at: 'operator' },
+          { t: 4.0, who: 'chloe', do: 'pose', name: 'kneel_one' }, { t: 0.3, who: 'operator', do: 'lookAt', at: 'chloe' }],
+        lines: [{ who: 'chloe', text: 'When I get there. What happens? Really.', emote: 'tender', t: 4.4, to: 'operator' }] },
+      // over Chloe's shoulder: her eyes slide to the radio for a moment
+      { cam: { type: 'ots', over: 'chloe', on: 'operator', side: 'left', lens: 55, push: 0.05 }, hold: 0.4, focus: 'operator',
+        actions: [{ t: 0.35, who: 'operator', do: 'lookAt', at: L(4.55, 0.68, 9.5) }, { t: 1.6, who: 'operator', do: 'lookAt', at: 'chloe' }],
+        lines: [{ who: 'operator', text: 'A scan and some blood at our lab. Then you come home — and the world comes with you.', emote: 'lying', pause: 0.5, to: 'chloe' }] },
+      // back on the two of them; then focus racks to Chase. He saw her eyes move.
+      { cam: { type: 'static', at: L(5.45, 1.2, 9.95), look: L(3.3, 0.98, 7.4), lens: 40 }, dur: 6.0, focus: { rack: ['chloe', 'chase'], at: 2.9, dur: 1.5 },
+        actions: [{ t: 0, who: 'chase', do: 'lookAt', at: 'operator' }, { t: 4.2, who: 'chase', do: 'emote', name: 'tense' }, { t: 0.4, who: 'wai', do: 'lookAt', at: 'chloe' }],
+        lines: [{ who: 'chloe', text: 'The world. Okay.', emote: 'smile', pause: 0.7, to: 'operator' }] },
+      { cam: { type: 'ots', over: 'chase', on: 'operator', lens: 70, push: 0.04 }, hold: 0.3,
+        actions: [{ t: 0, who: 'operator', do: 'lookAt', at: 'chase' }],
+        lines: [{ who: 'operator', text: "Her name's Chloe.", emote: 'neutral', pause: 0.5, to: 'chase' }] },
+      { cam: { type: 'close', who: 'chase', push: 0.04 }, hold: 0.3,
+        lines: [{ who: 'chase', text: "Don't need it.", emote: 'neutral', pause: 0.3, to: 'operator' }] },
+      // she gets up, crosses to her bag, pulls it on
+      { cam: { type: 'static', at: L(1.6, 1.52, 4.7), look: L(0.9, 1.15, 7.3), lens: 38, push: 0.04 }, hold: 0.5, focus: 'chloe',
+        actions: [{ t: 0, who: 'chloe', do: 'stand' }, { t: 0.4, who: 'chloe', do: 'lookAt', at: L(0.75, 0.3, 7.75) }, { t: 0.5, who: 'chloe', do: 'walkTo', at: 'mk_15_chloe_bag', speed: 1.3, yaw: -2.8 },
+          { t: 3.1, do: 'call', hook: 'c15.bag' }, { t: 3.1, who: 'chloe', do: 'gesture', name: 'shrug' }, { t: 3.5, who: 'chloe', do: 'lookAt', at: 'chase' }],
+        cues: [{ t: 3.1, sfx: 'pickup', at: 'chloe', vol: 0.4 }],
+        lines: [{ who: 'chloe', text: "It's on my badge. In case you forget.", emote: 'smirk', t: 3.7, to: 'chase' }] },
+      // behind Chase: she heads for the back door, Wai after her; he turns to follow
+      { cam: { type: 'static', at: L(1.96, 1.56, 2.09), look: L(-5.62, 1.3, 14.2), lens: 35 }, dur: 2.8, focus: 'chase',
+        actions: [{ t: 0, who: 'chase', do: 'lookAt', at: null }, { t: 0, who: 'chase', do: 'turnTo', to: -0.59, dur: 1.0 }, { t: 0.2, who: 'chloe', do: 'lookAt', at: null },
+          { t: 0.2, who: 'chloe', do: 'walkTo', at: L(-2.6, 0, 10.6), speed: 1.3 }, { t: 0.6, who: 'wai', do: 'lookAt', at: null }, { t: 0.7, who: 'wai', do: 'walkTo', path: [L(0.4, 0, 5.9), L(-1.2, 0, 8.4)], speed: 1.25 }] },
+    ],
+    end: { call: { hook: 'c15.end' } },
+    exit: { blend: 'gameplay', dur: 1.2 },
+  };
+
+  // ==========================================================================================================================
+  // 1.6 — Under the Wall: back door → lane A → lane B (the curfew patrol) → the apron (the searchlight) → the grate → 1E
+  // ==========================================================================================================================
+  function patrol(G, A) {
+    if (A.data.patrolled) return;
+    A.data.patrolled = true;
+    [['c1d_lane_a', [-27.5, 0, 40.6]], ['c1d_lane_b', [-26.2, 0, 39.3]]].forEach(([route, at], i) => {
+      const a = G.spawn('human', { pos: A.w(at), yaw: PI / 2 }, { name: 'comms_lane_' + i, faction: 'comms', weapon: 'rifle', behaviour: 'patrol', route, seed: 81 + i });
+      a.char.hold('torch', 'l', { light: true });
+    });
+  }
+  // Chloe's first walk-and-talk: out the back door, the manual comes out once the patrol is behind them
+  async function walkTalk(G, A) {
+    const D = A.data, chloe = G.who('chloe');
+    await G.until(() => pp().z > OD[2] + 14.8);
+    await G.talk('c1.6a');
+    await G.until(() => D.calm);
+    if (!chloe.held('l')) chloe.hold('manual', 'l');
+    await G.talk('c1.6b');
+    await G.wait(1.2);
+    if (chloe.held('l')) chloe.drop('l', { remove: true });
+    D.talked = true;
+  }
+  // Chloe and Wai come through the bent bars after him; Wai's torch goes on in the dark
+  function through(G) {
+    const gap = [WD(-38.7, 0, 39.19), WD(-40.3, 0, 39.19)];
+    [['chloe', 0.4, [-41.7, 0, 39.7]], ['wai', 1.7, [-41.2, 0, 40.6]]].forEach(([id, t, to]) => {
+      const c = G.who(id);
+      G.wait(t).then(() => c.walkTo(WD(...to), { path: gap, speed: 0.8 })).then(() => {
+        if (id !== 'wai' || c.held('l')) return;
+        c.hold('torch', 'l', { light: true }); Audio.sfx('tape_click', { pos: c.point('hand_l'), vol: 0.5 });
+      }).catch(() => {});
+    });
+  }
+  // 6 m into the culvert: 1D → 1E (the same tube), everyone keeps their offsets; the gameplay camera keeps its heading
+  async function swap(G) {
+    const off = V(OE[0] - OD[0] + 40, 0, OE[2] - OD[2] - 40), yaw = Play.camYaw, chase = G.who('chase'), others = [G.who('chloe'), G.who('wai')];
+    for (const c of others) c.stop();
+    const E = await G.area('1E');
+    E.data.fresh = false;
+    chase.root.position.add(off);
+    others.forEach((c, i) => {
+      c.root.position.add(off);
+      if (c.root.position.x > OE[0] - 1) G.place(c, E.w([-1.3 - i * 0.4, 0, i ? 0.7 : -0.7]), -PI / 2);   // still outside the grate
+    });
+    Play.snapCamera(); Play.camYaw = yaw;
+    return E;
+  }
+  const GRATE_AT = V(OD[0] - 38.9, 0, OD[2] + 39.6);
+  H['ch1.6'] = async G => {
+    let A = G.areaById('1D');
+    if (!(A && G.A === A && A.data.part === 'free')) {   // a retry or a continue: at the back door, ready to go
+      G.fade('black', 0);
+      A = await load(G, '1D', 'lanes');
+      const { chase } = trio(G), op = operator(G);
+      G.place(chase, 'mk_16_chase'); G.place(G.who('chloe'), 'mk_16_chloe'); G.place(G.who('wai'), 'mk_16_wai');
+      seat(G, op); A.data.opWound = op;
+      A.data.bag.visible = false; A.data.backDoor.userData.setOpen(0.92);
+      kit(); G.player(chase, PROFILE); follow(G);
+      settle(); Play.snapCamera();
+      G.fade('none', 0.8);
+    }
+    const D = A.data;
+    D.part = 'lanes'; D.calm = true; D.talked = false; D.through = false;
+    for (const id of ['chloe', 'wai']) { const a = comp(G.who(id)); if (a) a.hold(false); }
+    patrol(G, A);
+    G.control(true);
+    walkTalk(G, A).catch(() => {});
+    await G.until(() => D.talked && U.dist2(pp(), GRATE_AT) < 3);
+    await G.say('chase', 'Tunnel. Shut up.', { emote: 'tense', to: G.who('chloe') });
+    A.squeeze({ from: [-38.72, 0, 39.19], to: [-40.45, 0, 39.19], oneWay: true, onDone: () => { D.through = true; } });
+    await G.until(() => D.through);
+    D.part = 'tunnel'; Dialogue.resume();
+    through(G);
+    await G.until(() => pp().x < OD[0] - 46 && !Play.busy && !Director.active);
+    const E = await swap(G);
+    if (hasStep('1.6b')) { E.data.handoff = true; return; }
+    await tunnelWalk(G);
+  };
+  // ch1.6b (checkpoint): the tunnel under the wall, to the outfall
+  const tunnelWalk = G => G.until(() => pp().x < OE[0] - 46.2 && !Play.busy);
+  H['ch1.6b'] = async G => {
+    const E0 = G.areaById('1E');
+    if (E0 && E0.data.handoff && G.A === E0) E0.data.handoff = false;
+    else {
+      G.fade('black', 0);
+      await load(G, '1E', 'tunnel');
+      const { chase, wai } = trio(G);
+      if (G.actors.operator) G.actors.operator.setVisible(false);
+      G.place(chase, 'mk_start'); G.place(G.who('chloe'), 'mk_1e_s_chloe'); G.place(wai, 'mk_1e_s_wai');
+      wai.hold('torch', 'l', { light: true });
+      kit(); G.player(chase, PROFILE); follow(G);
+      settle(); Play.snapCamera();
+      G.fade('none', 0.8);
+    }
+    G.control(true);
+    await tunnelWalk(G);
+  };
+
+  // ==========================================================================================================================
+  // 1.7 — The Scan
+  // ==========================================================================================================================
+  H['ch1.7'] = async G => {
+    if (G.A !== G.areaById('1E')) {                     // run on its own: they are in the tunnel near the outfall
+      await load(G, '1E', 'tunnel');
+      const { chase, wai } = trio(G);
+      if (G.actors.operator) G.actors.operator.setVisible(false);
+      G.place(chase, 'mk_1e_chase'); G.place(G.who('chloe'), 'mk_1e_chloe'); G.place(wai, 'mk_1e_wai');
+      kit();
+    }
+    poses();
+    const chase = G.who('chase'), wai = G.who('wai'), chloe = G.who('chloe');
+    for (const c of [wai, chloe]) { const a = comp(c); if (a) a.dismiss(); c.stop(); }
+    G.player(chase, { hud: false }); G.control(false); UI.prompt(null);   // the Director owns his hands (the knife, the revolver)
+    for (const c of [chase, chloe]) for (const h of ['l', 'r']) if (c.held(h)) c.drop(h, { remove: true });
+    if (wai.held('l')) wai.drop('l', { remove: true });          // his torch off before they step out
+    if (!wai.held('r')) wai.hold('bat', 'r');
+    const s1 = G.who('soldier'), s2 = G.who('soldier_b');
+    for (const s of [s1, s2]) { reset(s); s.setVisible(false); }
+    s1.hold('scanner', 'r'); s2.hold('rifle', 'r');
+    await G.scene('1.7');
+  };
+  H['c17.lights'] = G => {   // the dinghy's lamp and two torches, all at once
+    const A = G.areaById('1E'); if (!A) return;
+    const D = A.data;
+    D.spot.intensity = 60; D.boatLamp.material.emissiveIntensity = 6; D.boatGlow.visible = true; D.spotBeam.visible = true;
+    for (const n of ['soldier', 'soldier_b']) {
+      const s = G.who(n); s.setVisible(true);
+      if (!s.held('l')) s.hold('torch', 'l', { light: true }).userData.light.intensity = 4;   // close up: a torch, not a floodlight
+    }
+  };
+  H['c17.scan'] = (G, txt) => { const sc = G.who('soldier').held('r'); if (sc && sc.userData.setText) sc.userData.setText(txt, txt !== 'CLEAR'); };
+  H['c17.slip'] = G => G.who('chloe').badge(1, 'forearm_l');
+  H['c17.push'] = G => { const c = G.who('chloe'); c.badge(1, 'forearm_l'); if (c.parts.sweatband !== 'up') c.setPart('sweatband', 'up'); };
+  H['c17.end'] = G => {      // the end state (also on skip): the lights on, both soldiers dead in the water, her Badge 1
+    H['c17.lights'](G);
+    const c = G.who('chloe'); c.badge(1, 'forearm_l');
+    for (const n of ['soldier', 'soldier_b']) { const s = G.who(n); if (s.poseName !== 'dead') s.pose('dead', { direct: true, dur: 0.2 }); }
+  };
+
+  // Blocking (1E local, the street at y −0.36 under 0.48 m of water): out of the outfall (x −50) they wade to Wai (−53.3, 2.1),
+  // Chase (−53.6, 0.6), Chloe (−53.3, −0.9), facing west into the lamp of the COMMS dinghy (−61, −1.3); the scanning soldier
+  // works along in front of them facing east; the second soldier covers from (−56.8, 3.6). Afterwards Chase stands at Chloe's
+  // left (−53.45, −0.2) over her; the tower they leave for is at the south end of the street.
+  const E = WE, GY = GY_E;
+  CONTENT.scenes['1.7'] = {
+    title: 'The Scan', area: '1E', grade: 'qz_green', start: { cut: true }, music: 'stop', amb: 'qz_rain',
+    cast: { chase: 'mk_17_chase_in', chloe: 'mk_17_chloe_in', wai: 'mk_17_wai_in', soldier: 'mk_17_s1', soldier_b: 'mk_17_s2' },
+    shots: [
+      // Ann Street under the flood, rain on the water; they climb down out of the black mouth of the outfall and wade out
+      { cam: { type: 'static', at: E(-57.8, 0.45, -6.4), look: E(-50.6, 1.0, 0.4), lens: 28, push: 0.03 }, dur: 6.6, focus: 'chase',
+        actions: [{ t: 0.3, who: 'chase', do: 'walkTo', path: [E(-50.0, 0, 0.3), E(-51.2, GY, 0.4), 'mk_17_chase'], speed: 1.05, yaw: -PI / 2 },
+          { t: 1.0, who: 'chloe', do: 'walkTo', path: [E(-50.0, 0, -0.3), E(-51.2, GY, -0.6), 'mk_17_chloe'], speed: 1.05, yaw: -PI / 2 + 0.2 },
+          { t: 1.7, who: 'wai', do: 'walkTo', path: [E(-50.0, 0, 0.6), E(-51.2, GY, 1.4), 'mk_17_wai'], speed: 1.0, yaw: -PI / 2 - 0.25 }],
+        cues: [{ t: 1.9, sfx: 'water_splash', at: E(-50.8, 0, 0.3), vol: 0.5 }, { t: 3.0, sfx: 'water_splash', at: E(-50.8, 0, -0.4), vol: 0.45 }, { t: 3.9, sfx: 'water_splash', at: E(-50.8, 0, 0.8), vol: 0.5 }] },
+      // the lamp on the dinghy slams on, then the torches: two COMMS soldiers standing in the water
+      { cam: { type: 'static', at: E(-50.6, 1.25, -2.4), look: E(-58.5, 1.2, 0.9), lens: 30 }, dur: 2.8, focus: 'soldier',
+        actions: [{ t: 0.3, do: 'call', hook: 'c17.lights' }, { t: 0.45, who: 'chase', do: 'emote', name: 'tense' }, { t: 0.4, who: 'chloe', do: 'emote', name: 'afraid' }, { t: 0.5, who: 'wai', do: 'emote', name: 'shocked' },
+          { t: 0.6, who: 'soldier_b', do: 'aim', at: 'chase' }, { t: 0.4, who: 'soldier', do: 'walkTo', at: 'mk_17_s1_near', speed: 1.1 }],
+        cues: [{ t: 0.3, sfx: 'tape_click', at: E(-61, 1.6, -1.3), vol: 1 }, { t: 0.5, sfx: 'radio_click', at: 'soldier_b', vol: 0.8 }, { t: 0.6, shake: 0.08, dur: 0.3 }] },
+      { cam: { type: 'ots', over: 'chase', on: 'soldier', side: 'right', lens: 55, push: 0.04 }, hold: 0.3, focus: 'soldier',
+        lines: [{ who: 'soldier', text: 'Down! On your knees! Eyes up!', emote: 'angry', pause: 0.2, to: 'chase' }] },
+      // down on their knees in the water, hands up — Chloe keeps her left arm behind her back
+      { cam: { type: 'static', at: E(-56.4, 1.0, 1.4), look: E(-53.4, 0.5, 0.4), lens: 30 }, dur: 4.6, focus: 'chase',
+        actions: [{ t: 0.1, who: 'wai', do: 'pose', name: 'kneel_hands', at: 'mk_17_wai' }, { t: 0.6, who: 'chase', do: 'pose', name: 'kneel_hands', at: 'mk_17_chase' },
+          { t: 1.2, who: 'chloe', do: 'pose', name: 'kneel_hide', at: 'mk_17_chloe' }, { t: 0.4, who: 'chase', do: 'lookAt', at: 'soldier' },
+          { t: 1.5, who: 'soldier', do: 'walkTo', at: 'mk_17_scan_wai', speed: 1.3, yaw: PI / 2 }],
+        cues: [{ t: 0.6, sfx: 'water_splash', at: 'mk_17_wai', vol: 0.4 }, { t: 1.1, sfx: 'water_splash', at: 'mk_17_chase', vol: 0.4 }, { t: 1.7, sfx: 'water_splash', at: 'mk_17_chloe', vol: 0.4 }] },
+      // the scanner at Wai's eyes: CLEAR
+      { cam: { type: 'static', at: E(-53.75, 1.05, 4.1), look: E(-53.85, 0.85, 2.15), lens: 35, push: 0.03 }, dur: 3.0, focus: 'wai',
+        actions: [{ t: 0, who: 'soldier', do: 'turnTo', to: 'wai', dur: 0.3 }, { t: 0.2, who: 'soldier', do: 'gesture', name: 'point', to: 'wai.eyes', hold: true }, { t: 0.3, who: 'wai', do: 'lookAt', at: 'soldier.hand_r' },
+          { t: 1.5, do: 'call', hook: 'c17.scan', args: 'CLEAR' }, { t: 2.4, who: 'soldier', do: 'gesture', name: null }],
+        cues: [{ t: 1.5, sfx: 'scanner_beep', at: 'soldier.hand_r', vol: 0.7 }] },
+      // Chase: CLEAR
+      { cam: { type: 'static', at: E(-54.85, 1.15, 1.45), look: E(-53.6, 0.95, 0.6), lens: 45, push: 0.03 }, dur: 3.4, focus: 'chase',
+        actions: [{ t: 0, who: 'soldier', do: 'walkTo', at: 'mk_17_scan_chase', speed: 1.0, yaw: PI / 2 }, { t: 1.5, who: 'soldier', do: 'gesture', name: 'point', to: 'chase.eyes', hold: true },
+          { t: 2.2, do: 'call', hook: 'c17.scan', args: 'CLEAR' }, { t: 3.2, who: 'soldier', do: 'gesture', name: null }, { t: 0.5, who: 'wai', do: 'lookAt', at: 'chloe' }, { t: 1.4, who: 'chase', do: 'lookAt', at: 'soldier.hand_r' }],
+        cues: [{ t: 2.2, sfx: 'scanner_beep', at: 'soldier.hand_r', vol: 0.7 }] },
+      // Chloe: her arm behind her back; he grabs it, the sweatband slips, the scanner shrieks
+      { cam: { type: 'static', at: E(-55.0, 1.15, 0.6), look: E(-53.75, 0.62, -0.9), lens: 34, handheld: 0.3 }, dur: 4.2, focus: 'chloe',
+        actions: [{ t: 0, who: 'soldier', do: 'walkTo', at: 'mk_17_scan_chloe', speed: 1.0, yaw: PI / 2 - 0.1 }, { t: 0.2, who: 'chloe', do: 'lookAt', at: 'soldier' }, { t: 0.3, who: 'chase', do: 'lookAt', at: 'soldier' },
+          { t: 1.6, who: 'soldier', do: 'gesture', name: 'point', to: 'chloe.eyes', hold: true }, { t: 2.1, who: 'soldier', do: 'lookAt', at: 'chloe.hand_l' },
+          { t: 2.5, who: 'soldier', do: 'gesture', name: 'grab', hand: 'l', to: 'chloe.hand_l' }, { t: 2.7, who: 'chloe', do: 'pose', name: 'kneel' }, { t: 2.8, do: 'call', hook: 'c17.slip' },
+          { t: 2.9, do: 'call', hook: 'c17.scan', args: 'BADGE: 1' }, { t: 2.9, who: 'chloe', do: 'emote', name: 'afraid' }, { t: 3.1, who: 'soldier', do: 'lookAt', at: 'chase' }],
+        cues: [{ t: 2.9, sfx: 'scanner_shriek', at: 'soldier.hand_r', vol: 1 }],
+        lines: [{ who: 'soldier', text: "She's tagged! She's—", emote: 'shocked', t: 3.1, dur: 1.3, to: 'chase' }] },
+      // Chase moves: an elbow, the soldier's own knife
+      { cam: { type: 'close', who: 'chase', lens: 70 }, dur: 0.7, focus: 'chase',
+        actions: [{ t: 0, who: 'chase', do: 'emote', name: 'angry' }] },
+      { cam: { type: 'static', at: E(-55.3, 1.05, -2.9), look: E(-54.2, 0.95, -0.6), lens: 30, handheld: 0.8 }, dur: 1.5, focus: 'soldier',
+        actions: [{ t: 0, who: 'chase', do: 'stand' }, { t: 0.05, who: 'chase', do: 'runTo', at: 'mk_17_chase_b', yaw: -2.8 }, { t: 0.3, who: 'chase', do: 'gesture', name: 'punch', hand: 'l', to: 'soldier.head' },
+          { t: 0.35, who: 'soldier', do: 'turnTo', to: 'chase', dur: 0.2 }, { t: 0.5, who: 'soldier', do: 'gesture', name: 'struggle' }, { t: 0.5, who: 'soldier', do: 'drop', hand: 'r' }, { t: 0.7, who: 'chase', do: 'hold', prop: 'knife', hand: 'r' },
+          { t: 0.85, who: 'chase', do: 'gesture', name: 'punch', hand: 'r', to: 'soldier.chest' }],
+        cues: [{ t: 0.45, sfx: 'punch', at: 'soldier', vol: 1 }, { t: 0.45, shake: 0.2, dur: 0.25 }, { t: 1.0, sfx: 'stab', at: 'soldier', vol: 0.9 }] },
+      { cam: { type: 'close', who: 'soldier', lens: 60, handheld: 0.5 }, dur: 1.3, focus: 'soldier',
+        actions: [{ t: 0.1, who: 'soldier', do: 'drop', hand: 'l' }, { t: 0.15, who: 'soldier', do: 'die' }],
+        cues: [{ t: 0.9, sfx: 'water_splash', at: 'soldier', vol: 0.8 }, { t: 0.95, sfx: 'body_fall', at: 'soldier', vol: 0.4 }] },
+      // Wai clubs the second
+      { cam: { type: 'two_shot', a: 'wai', b: 'soldier_b', lens: 32, handheld: 0.6 }, dur: 2.0, focus: 'wai',
+        actions: [{ t: 0, who: 'wai', do: 'stand' }, { t: 0.05, who: 'soldier_b', do: 'aim', at: 'wai' }, { t: 0.2, who: 'wai', do: 'runTo', at: E(-55.7, GY, 3.1) },
+          { t: 0.6, who: 'wai', do: 'gesture', name: 'swing', to: 'soldier_b.head' }, { t: 0.95, who: 'soldier_b', do: 'die' }, { t: 0.95, who: 'soldier_b', do: 'drop', hand: 'r' }, { t: 1.0, who: 'soldier_b', do: 'drop', hand: 'l' }],
+        cues: [{ t: 0.85, sfx: 'metal_hit', at: 'soldier_b', vol: 0.9 }, { t: 0.85, sfx: 'punch', at: 'soldier_b', vol: 0.8 }, { t: 1.5, sfx: 'water_splash', at: 'soldier_b', vol: 0.8 }] },
+      // silence, except the rain
+      { cam: { type: 'static', at: E(-55.0, 2.5, -6.0), look: E(-54.6, 0.2, 0.8), lens: 28 }, dur: 3.2, focus: 'chloe',
+        actions: [{ t: 0.2, who: 'chloe', do: 'emote', name: 'shocked' }, { t: 0.3, who: 'wai', do: 'emote', name: 'exhausted' }, { t: 0.5, who: 'chase', do: 'emote', name: 'tense' }] },
+      // he drops the knife, takes her forearm and pushes the sweatband up
+      { cam: { type: 'static', at: E(-54.6, 0.95, -1.9), look: E(-53.35, 0.55, -0.55), lens: 35, handheld: 0.2 }, dur: 2.6, focus: 'chloe',
+        actions: [{ t: 0, who: 'chase', do: 'drop', hand: 'r' }, { t: 0.1, who: 'chase', do: 'walkTo', at: 'mk_17_chase_c', speed: 1.4, yaw: 2.17 }, { t: 0.2, who: 'chase', do: 'lookAt', at: 'chloe.hand_l' },
+          { t: 1.1, who: 'chase', do: 'gesture', name: 'grab', to: 'chloe.hand_l' }, { t: 1.2, who: 'chloe', do: 'pose', name: 'kneel_arm', dur: 0.35 }, { t: 1.3, who: 'chloe', do: 'lookAt', at: 'chase' },
+          { t: 1.5, do: 'call', hook: 'c17.push' }],
+        cues: [{ t: 1.2, sfx: 'water_splash', at: 'chloe', vol: 0.3 }] },
+      // close: a red dot on her skin, a white 1
+      { cam: { type: 'static', at: BADGE_CAM, look: BADGE, lens: 60 }, dur: 2.8, focus: BADGE },
+      { cam: { type: 'close', who: 'chase', push: 0.04 }, hold: 0.3, actions: [{ t: 0, who: 'chase', do: 'lookAt', at: 'chloe' }],
+        lines: [{ who: 'chase', text: 'How long.', emote: 'tense', pause: 0.5, to: 'chloe' }] },
+      { cam: { type: 'close', who: 'chloe', push: 0.04 }, hold: 0.3,
+        lines: [{ who: 'chloe', text: 'Three weeks.', emote: 'tense', pause: 0.4, to: 'chase' }] },
+      { cam: { type: 'close', who: 'wai', push: 0.04 }, hold: 0.2,
+        lines: [{ who: 'wai', text: "That's not possible.", emote: 'shocked', pause: 0.3, to: 'chloe' }] },
+      { cam: { type: 'close', who: 'chloe', push: 0.05 }, hold: 0.3, actions: [{ t: 0, who: 'chloe', do: 'lookAt', at: 'wai' }],
+        lines: [{ who: 'chloe', text: "It says one. It's always said one.", emote: 'sad', pause: 0.3, to: 'wai' }] },
+      { cam: { type: 'close', who: 'wai', push: 0.06 }, hold: 0.4,
+        lines: [{ who: 'wai', text: 'Nobody stays on one. Nobody.', emote: 'shocked', pause: 0.3, to: 'chloe' }] },
+      // he draws his revolver and points it at her head; she stares straight into the barrel
+      { cam: { type: 'static', at: E(-54.9, 0.9, -2.45), look: E(-53.7, 0.8, -0.62), lens: 32 }, dur: 3.2, focus: 'chloe',
+        actions: [{ t: 0.3, who: 'chase', do: 'hold', prop: 'revolver', hand: 'r' }, { t: 0.55, who: 'chase', do: 'aim', at: 'chloe.head' }, { t: 0.9, who: 'chloe', do: 'lookAt', at: 'chase.hand_r' },
+          { t: 1.0, who: 'chloe', do: 'emote', name: 'neutral' }],
+        cues: [{ t: 0.9, sfx: 'reload', at: 'chase.hand_r', vol: 0.4 }] },
+      { cam: { type: 'close', who: 'chase', push: 0.05 }, hold: 0.3,
+        lines: [{ who: 'chase', text: "Then she's about to be two.", emote: 'tense', pause: 0.4, to: 'chloe' }] },
+      // down the barrel to her eyes; after her line, hold three seconds
+      { cam: { type: 'static', at: { of: 'chase', off: [0.18, 1.35, 0.05] }, look: 'chloe.eyes', lens: 55, push: 0.03 }, hold: 3.0, focus: 'chloe',
+        lines: [{ who: 'chloe', text: "Wait for it, then. I've got time. I've had three weeks of time.", emote: 'neutral', pause: 0.4, to: 'chase' }] },
+      // he lowers the gun
+      { cam: { type: 'static', at: E(-54.9, 0.9, -2.45), look: E(-53.7, 0.8, -0.62), lens: 32 }, dur: 2.0, focus: 'chase',
+        actions: [{ t: 0.2, who: 'chase', do: 'pose', name: 'stand' }, { t: 0.6, who: 'chase', do: 'lookAt', at: E(-55, 0.2, -3) }, { t: 0.8, who: 'chase', do: 'emote', name: 'exhausted' }] },
+      { cam: { type: 'close', who: 'wai', push: 0.05 }, hold: 0.1,
+        actions: [{ t: 0, who: 'wai', do: 'walkTo', at: E(-54.6, GY, 1.3), speed: 0.9 }, { t: 0.2, who: 'wai', do: 'lookAt', at: 'chase' }],
+        lines: [{ who: 'wai', text: "This is what they want her for. Chase. If she's real—", emote: 'tense', pause: 0.6, to: 'chase' }] },
+      { cam: { type: 'close', who: 'chase', push: 0.05 }, hold: 0.5, actions: [{ t: 0, who: 'chase', do: 'lookAt', at: 'wai' }],
+        lines: [{ who: 'chase', text: "If she's real, she's someone else's problem. By morning.", emote: 'neutral', pause: 0.2, to: 'wai' }] },
+      // he wades off down Ann Street toward the leaning tower; she gets up and follows; Wai last
+      { cam: { type: 'static', at: E(-54.2, 0.5, 6.2), look: E(-56.5, 4.0, -40), lens: 26 }, dur: 6.0, focus: null,
+        actions: [{ t: 0.1, who: 'chase', do: 'lookAt', at: null }, { t: 0.2, who: 'chase', do: 'walkTo', path: [E(-54.6, GY, -3.2), 'mk_17_end_chase'], speed: 0.95 },
+          { t: 0.8, who: 'chloe', do: 'lookAt', at: 'chloe.hand_l' }, { t: 1.6, who: 'chloe', do: 'stand' }, { t: 2.2, who: 'chloe', do: 'lookAt', at: null },
+          { t: 2.4, who: 'chloe', do: 'walkTo', at: 'mk_17_end_chloe', speed: 1.0 }, { t: 1.8, who: 'wai', do: 'lookAt', at: null }, { t: 2.0, who: 'wai', do: 'walkTo', at: 'mk_17_end_wai', speed: 0.9 }] },
+    ],
+    end: { call: { hook: 'c17.end' } },
+    exit: { hold: true },
+  };
 })();

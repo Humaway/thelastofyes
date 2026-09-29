@@ -351,7 +351,7 @@
   const T6 = (x, y, z) => ({ of: 'mk_p6_tackle', off: [x, y, z] });
   const at6 = (G, x, z) => { const f = G.marker('mk_p6_tackle'), s = Math.sin(f.yaw), c = Math.cos(f.yaw); return V(f.pos.x - c * x + s * z, f.pos.y, f.pos.z + s * x + c * z); };
   CONTENT.scenes['P.6'] = {
-    title: 'On Foot', area: 'P4', grade: 'launch_fire',
+    title: 'On Foot', area: 'P4', grade: 'launch_fire', key: { strength: 1.1, color: 0xffa868 },
     cast: { chase: 'mk_p6_tackle', tackler: { at: T6(3.4, 0, 1.3), yaw: -0.75 - PI / 2 - 0.3 } },
     start: { cut: true },
     shots: [
@@ -378,13 +378,13 @@
           { t: 2.6, who: 'chase', do: 'pose', name: 'kneel_one' }],
         cues: [{ t: 0.3, sfx: 'breath_in', at: 'chase', vol: 0.8 }] },
       // he lifts her up; on her wrist a red dot rises through the skin like a notification: 1, then 4
-      { cam: { type: 'static', at: T6(-0.55, 1.0, 3.9), look: T6(-0.62, 0.8, 1.4), lens: 35 }, dur: 3.0, focus: 'bub',
+      { cam: { type: 'static', at: T6(-0.55, 1.0, 3.9), look: T6(-0.62, 0.8, 1.4), lens: 40 }, dur: 3.0, focus: 'bub',
         actions: [{ t: 0.1, do: 'call', hook: 'p6.lift' }, { t: 1.2, who: 'bub', do: 'lookAt', at: 'bub.hand_r' }, { t: 1.4, who: 'chase', do: 'lookAt', at: 'bub.hand_r' }],
         cues: [{ t: 0.4, sfx: 'gasp', at: 'bub', vol: 0.7 }] },
-      { cam: { type: 'extreme_close', who: 'bub', part: 'badge', lens: 85 }, dur: 3.4, focus: 'bub.hand_r',
+      { cam: { type: 'extreme_close', who: 'bub', part: 'badge', lens: 85, dist: 0.42 }, dur: 3.4, focus: 'bub.badge',
         actions: [{ t: 0.5, who: 'bub', do: 'badge', value: 1, where: 'wrist_r' }, { t: 0.55, do: 'call', hook: 'p6.badge' }, { t: 2.1, who: 'bub', do: 'badge', value: 4, where: 'wrist_r' }],
         cues: [{ t: 0.5, sfx: 'notif_chime', at: 'bub', vol: 0.3 }, { t: 2.1, sfx: 'notif_chime', at: 'bub', vol: 0.4 }] },
-      { cam: { type: 'static', at: T6(-0.15, 0.72, 2.6), look: 'bub.eyes', lens: 50, push: 0.06 }, hold: 0.3, focus: 'bub',
+      { cam: { type: 'ots', over: 'chase', on: 'bub', side: 'right', lens: 50, push: 0.06 }, hold: 0.3, focus: 'bub',   // her face in the firelight
         actions: [{ t: 0.15, who: 'chase', do: 'gesture', name: 'hold_hands', to: 'bub', hold: true }, { t: 0.6, who: 'bub', do: 'lookAt', at: 'chase' }],
         lines: [{ who: 'bub', text: 'What is that? Dad, what is that?', emote: 'afraid', pause: 0.9, to: 'chase' }] },
       { cam: { type: 'close', who: 'chase', push: 0.05 }, hold: 0.4,
@@ -434,12 +434,16 @@
     chase.pose('stand', { dur: 0.5 }); chase.emote('exhausted'); luke.lookAt(chase);
     t.pose('dead', { dur: 0.6 }); t.lookAt(null);
   };
-  H['p6.badge'] = G => {   // turn the new Badge in its skin so its number stands upright for the insert (square-on, level camera)
-    const m = G.who('bub').badgeObj?.mesh; if (!m) return;
-    const q = m.getWorldQuaternion(new THREE.Quaternion()), n = V(0, 0, 1).applyQuaternion(q), y = V(0, 1, 0).applyQuaternion(q);
-    if (Math.abs(n.y) > 0.95) return;
-    const up = V(0, 1, 0).addScaledVector(n, -n.y).normalize();
-    m.rotateZ(Math.atan2(y.clone().cross(up).dot(n), y.dot(up)));
+  H['p6.badge'] = G => {   // for the insert, keep the Badge turned in its skin so its number reads upright to the lens (it moves with her arm, 1 then 4)
+    const A = G.areaById('P4'), bub = G.who('bub'), q = new THREE.Quaternion(), n = V(), y = V(), up = V(), x = V();
+    let t = 0;
+    const f = A.update(dt => {
+      if ((t += dt) > 3) { A.updaters.splice(A.updaters.indexOf(f), 1); return; }
+      const m = bub.badgeObj?.mesh; if (!m) return;
+      m.getWorldQuaternion(q); n.set(0, 0, 1).applyQuaternion(q); y.set(0, 1, 0).applyQuaternion(q);
+      up.set(0, 1, 0).applyQuaternion(Engine.camera.quaternion); up.addScaledVector(n, -up.dot(n)).normalize();
+      m.rotateZ(Math.atan2(x.crossVectors(y, up).dot(n), y.dot(up)));
+    });
   };
   H['p6.lift'] = G => { const bub = G.who('bub'); bub.emote('afraid'); bub.gesture('hand_over', { to: G.who('chase').point('chest'), hold: true }); };
   H['p6.carry'] = G => {
@@ -654,7 +658,7 @@
         actions: [{ t: 0.3, who: 'chase', do: 'lookAt', at: 'soldier' }, { t: 0.2, who: 'bub', do: 'lookAt', at: 'soldier' }],
         lines: [{ who: 'chase', text: "My daughter's hurt. We need a hospital.", emote: 'afraid', pause: 0.5, to: 'soldier' }] },
       // he keeps his rifle on them and thumbs the radio, walking in
-      { cam: { type: 'ots', over: 'chase', on: 'soldier', lens: 60 }, hold: 0.4,
+      { cam: { type: 'static', at: { of: 'chase', off: [0.42, 1.74, -0.62] }, look: 'soldier.eyes', lens: 55 }, hold: 0.4, focus: 'soldier',   // past his right shoulder
         actions: [{ t: 0.1, do: 'call', hook: 'p7.prop', args: 'radio' }, { t: 0.6, who: 'soldier', do: 'walkTo', at: 'mk_p7_scan', speed: 0.8 }],
         lines: [radio('Three civilians at the south checkpoint.', 'tense', 0.5), radio('…Copy.', 'tense', 1.8), { who: 'soldier', text: 'Hold her out. Arm.', emote: 'tense', pause: 0.6, to: 'chase' }],
         cues: [{ t: 3.4, sfx: 'radio_static', at: 'soldier', vol: 0.4 }] },
@@ -664,7 +668,7 @@
           { t: 0.4, who: 'soldier', do: 'gesture', name: 'point', to: 'bub.eyes', hold: true }, { t: 2.4, do: 'call', hook: 'p7.scan' }],
         cues: [{ t: 1.2, sfx: 'scanner_beep', at: 'soldier.hand_r', vol: 0.5 }, { t: 2.4, sfx: 'scanner_beep', at: 'soldier.hand_r', vol: 0.9 }] },
       { cam: { type: 'static', at: 'mk_p7_scrcam', look: 'mk_p7_scr', lens: 100 }, dur: 2.4, focus: 'mk_p7_scr' },
-      { cam: { type: 'static', at: { of: 'soldier', off: [-0.45, 1.52, 1.25] }, look: 'soldier.eyes', lens: 55, push: 0.04 }, hold: 0.6, focus: 'soldier',
+      { cam: { type: 'static', at: { of: 'chase', off: [0.4, 1.72, -0.55] }, look: 'soldier.eyes', lens: 60, push: 0.04 }, hold: 0.6, focus: 'soldier',
         actions: [{ t: 0, who: 'soldier', do: 'gesture', name: null }],
         lines: [{ who: 'soldier', text: "She's tagged.", emote: 'tense', pause: 0.5, to: 'chase' }] },
       { cam: { type: 'close', who: 'chase', lens: 65, push: 0.06 }, hold: 0.3,
@@ -675,7 +679,7 @@
         lines: [radio("Sir, the girl's tagged.", 'tense', 0.9), radio("…Sir, they're just—", 'afraid', 1.6), radio('…Copy.', 'sad', 2.6)],
         cues: [{ t: 3.1, sfx: 'radio_static', at: 'soldier', vol: 0.35 }, { t: 6.6, sfx: 'radio_static', at: 'soldier', vol: 0.4 }, { t: 9.1, sfx: 'radio_click', at: 'soldier', vol: 0.6 }] },
       // 3. He lowers the radio and raises his rifle. His voice is young under the mask.
-      { cam: { type: 'static', at: { of: 'soldier', off: [-0.5, 1.5, 1.35] }, look: 'soldier.eyes', lens: 70, push: 0.08 }, hold: 1.0, focus: 'soldier',
+      { cam: { type: 'static', at: { of: 'chase', off: [0.36, 1.7, -0.5] }, look: 'soldier.eyes', lens: 70, push: 0.08 }, hold: 1.0, focus: 'soldier',   // past Chase: the muzzle comes up at us
         actions: [{ t: 0.2, do: 'call', hook: 'p7.prop', args: 'rifle' }, { t: 0.4, who: 'soldier', do: 'aim', at: 'chase.chest' }],
         lines: [{ who: 'soldier', text: "I'm sorry.", emote: 'sad', pause: 1.6, to: 'chase' }] },
       { cam: { type: 'close', who: 'luke', lens: 65, push: 0.05 }, hold: 0.1,

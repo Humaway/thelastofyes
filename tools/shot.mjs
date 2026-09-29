@@ -24,7 +24,7 @@ await page.route('https://cdn.jsdelivr.net/npm/three@0.160.0/**', r => {
   r.fulfill({ body: readFileSync(root + 'node_modules/three/' + p), contentType: 'application/javascript' });
 });
 await page.goto('file://' + outHtml + '?' + arg('q', 'dev'));
-await page.waitForFunction(() => window.GAME && window.GAME.ready, null, { timeout: 60000 }).catch(e => errors.push('[timeout] GAME.ready not set: ' + e.message));
+await page.waitForFunction(() => window.GAME && window.GAME.ready, null, { timeout: 240000 }).catch(e => errors.push('[timeout] GAME.ready not set: ' + e.message));
 await page.waitForTimeout(+arg('wait', 500));
 const steps = [];
 if (arg('ff')) steps.push('ff:' + arg('ff'));
