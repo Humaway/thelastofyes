@@ -18,9 +18,10 @@
 //   checkpoint: ch1.3 saves with flags.c1cB and a retry resumes at part B. ch1.4 plays scene 1.4, which ends HELD
 //   (exit hold, letterbox on) on the Operator's "Come and see." — 1.5 opens with a hard cut.
 // Markers: mk_start (free roam) · mk_1c_start, mk_1c_wai (part A) · mk_1c_b, mk_1c_wai_b (part B) · mk_1c_door (outside the
-//   office door) · mk_14_chase, mk_14_wai, mk_14_whole, mk_14_op (1.4 marks; the end state of 1.4 leaves them there).
+//   office door) · mk_14_chase, mk_14_wai2, mk_14_whole, mk_14_op_back (where 1.4 leaves Chase, Wai, the body, the Operator).
 // Area char: wholesaler (in his office from the start, visible through the lit windows). Persistent actors: chase, wai
-// (bruised; AI companion with his bat in 1.3; parked 'scripted' after 1.4), operator (wounded, created in ch1.4).
+// (bruised; AI companion with his bat in 1.3, dismissed for 1.4: he ends it with the pistol, the bat on the office floor),
+// operator (wounded, pale, revolver in her right hand, left hand held to the wound while in 1C; created in ch1.4).
 // ============================================================================
 (() => {
   const PI = Math.PI, H = CONTENT.hooks, O = [800, 0, 3000], DECK = 3.6;
@@ -75,10 +76,9 @@
       for (const [dx, dz] of [[-0.25, -0.27], [0.25, -0.27], [-0.25, 0.27], [0.25, 0.27]]) if (r() < 0.9) Build.box(w * 0.46, hh * (0.8 + r() * 0.5), d * 0.46, card, { pos: [x + dx * w, y + 0.14, z + dz * d], yaw: (r() - 0.5) * 0.12, tint: tint - (r() < 0.5 ? 0x101008 : 0), solid: false });
     }
     if (o.face != null && r() < 0.45) Build.decal(yes(), { pos: [x + Math.sin(o.face) * (w * 0.49), y + 0.14 + h * 0.55, z + Math.cos(o.face) * (d * 0.49)], yaw: o.face, w: 0.42, h: 0.21 });
-    if (o.solid) A_.collider([x - w / 2, y, z - d / 2], [x + w / 2, y + 0.14 + h, z + d / 2]);
+    if (o.solid) Build.A.collider([x - w / 2, y, z - d / 2], [x + w / 2, y + 0.14 + h, z + d / 2]);
     return h + 0.14;
   }
-  let A_ = null;   // area being built (for load's collider)
 
   // a back-to-back double row of pallet racking centred on x, from z0 to z1 (collapsed: the east face half down)
   function rack(x, z0, z1, r, o = {}) {
@@ -100,8 +100,7 @@
         load(x + s * 0.58, y, z0 + (i + 0.5) * bay + k * bay * 0.4, r, { w: 0.95, d: 1.0, h: 0.45 + r() * (y > 3 ? 0.9 : 1.15), face: s > 0 ? PI / 2 : -PI / 2 });
       }
     }
-    // tall stock on top of some bays, and a wire deck under the lowest level
-    A_.collider([x - 1.12, 0, z0 - 0.05], [x + 1.12, top, z1 + 0.05]);
+    Build.A.collider([x - 1.12, 0, z0 - 0.05], [x + 1.12, top, z1 + 0.05]);
   }
 
   // a counterbalance forklift, forks raised to `lift` with a load on them
@@ -256,7 +255,6 @@
   }
 
   function receiving(A, r) {
-    const D = A.data;
     // the side door they slip in by (hanging open), a strip of rain blowing in
     Build.prop('office_door', { pos: [-13, 0, 0], yaw: PI, open: 0.9, text: 'STAFF ENTRY', thick: 0.3, worn: 0.9 });
     Build.light('point', { pos: [-13, 2.1, 1.3], color: 0x9aaca8, intensity: 4, distance: 8, decay: 1.5 });
@@ -300,7 +298,7 @@
     Build.prop('mattress', { pos: [13.6, 0, 11.2], yaw: 0.1, dirty: true });
     Build.prop('camp_stove', { pos: [12.4, 0, 10.4], lit: false });
     // dock door 1, half up: grey river light, rain blowing in, a puddle
-    D.dock = Build.prop('roller_shutter', { pos: [16, 0, 8], yaw: -PI / 2, w: 4, h: 4.5, open: 0.56, color: 0x8a908c });
+    Build.prop('roller_shutter', { pos: [16, 0, 8], yaw: -PI / 2, w: 4, h: 4.5, open: 0.56, color: 0x8a908c });
     Build.water({ x1: 12.4, z1: 6.2, x2: 15.85, z2: 10.2, y: 0.012, color: 0x1c2420 });
     Build.pool({ pos: [13.5, 0, 8], r: 4, color: 0x9ab4b0, opacity: 0.16 });
     Build.light('point', { pos: [14.2, 2.2, 8], color: 0xa4bcb8, intensity: 9, distance: 14, decay: 1.4 });
@@ -337,7 +335,7 @@
   }
 
   function dispatch(A, r) {
-    const D = A.data, y = DECK, steel = M('metal_painted', { color: 0x4a5048 }), rail = M('metal_painted', { color: 0xd8b020 });
+    const y = DECK, steel = M('metal_painted', { color: 0x4a5048 }), rail = M('metal_painted', { color: 0xd8b020 });
     // the fire drum they warm their hands at, crates for seats, a pot
     Build.prop('barrel', { kind: 'burning', pos: [-8.5, 0, 36.4], light: 1.4 });
     for (const [x, z, yy] of [[-9.8, 35.6, 0.4], [-7.2, 35.4, -0.5]]) Build.prop('crate', { kind: 'plastic', pos: [x, 0, z], yaw: yy, color: 0x2a6ad8 });
@@ -430,7 +428,6 @@
     env: { top: 0x3a4642, horizon: 0x6a7872, bottom: 0x0e0f0e, intensity: 0.55, spots: [{ dir: [1, 0.3, 0.1], color: 0xbfd0c8, power: 2.2 }, { dir: [-0.4, 0.2, 1], color: 0xffb060, power: 0.8 }] },
     build(A) {
       const D = A.data, r = U.rng(311);
-      A_ = A;
       D.fresh = true; D.beats = []; D.foes = {}; D.tweens = []; D.listenT = 0;
       const hemi = Build.hemi({ sky: 0x6a7c76, ground: 0x1c1a14, intensity: 0.8 });
       D.sun = Build.sun({ dir: SUN, color: 0xbccac2, intensity: 2.6, area: 34, target: [0, 0, 24] });
@@ -463,7 +460,7 @@
       D.whole = A.char('wholesaler', { name: 'wholesaler', at: [-8.6, DECK, 45.7], yaw: 0 });
       // marks
       for (const [n, p, yaw] of [['mk_start', [-12.4, 0, 2.6], 0.3], ['mk_1c_out', [-13.1, 0, -1.6], 0], ['mk_1c_wai_out', [-13.7, 0, -2.9], 0.1],
-        ['mk_1c_start', [-12.4, 0, 2.7], 0.3], ['mk_1c_wai', [-11.3, 0, 3.4], 0.15], ['mk_1c_b', [-2.8, 0, 13.6], 0], ['mk_1c_wai_b', [-4.3, 0, 12.8], 0.2],
+        ['mk_1c_start', [-12.4, 0, 2.7], 0.3], ['mk_1c_wai', [-11.3, 0, 3.4], 0.15], ['mk_1c_b', [-7.6, 0, 11.1], 0.35], ['mk_1c_wai_b', [-8.9, 0, 10.6], 0.5],
         ['mk_1c_door', [-5.5, DECK, 40.9], 0], ['mk_14_chase_in', [-5.5, DECK, 40.8], 0], ['mk_14_wai_in', [-4.9, DECK, 40.6], -0.2],
         ['mk_14_chase', [-7.3, DECK, 43.4], -0.48], ['mk_14_wai', [-9.4, DECK, 43.1], 0.25], ['mk_14_wai2', [-9.9, DECK, 42.5], 0.8], ['mk_14_whole', [-8.6, DECK, 45.8], 0],
         ['mk_14_op_hide', [-15.1, DECK, 45.8], PI / 2], ['mk_14_op', [-12.8, DECK, 45.3], 1.92], ['mk_14_op_back', [-14.9, DECK, 45.9], -PI / 2]]) A.marker(n, p, yaw);
@@ -472,6 +469,7 @@
       const base = { h: hemi.intensity, s: D.sun.intensity };
       D.loops = [Audio.loop('rain', { vol: 0.7 }), Audio.loop('drips', { pos: A.w([-6, 1, 24]), vol: 0.6 }), Audio.loop('turbine_hum', { pos: A.w([-1.2, DECK + 0.5, 41.2]), vol: 0.25 }), Audio.loop('water_lap', { pos: A.w([20, 0, 8]), vol: 0.5 })];
       A.update((dt, t) => {
+        if ((D.birdT = (D.birdT ?? 9) - dt) <= 0) { D.birdT = 14 + Math.random() * 20; Audio.sfx(Math.random() < 0.6 ? 'pigeons' : 'metal_creak', { pos: A.w([-12 + Math.random() * 24, 8.5, 4 + Math.random() * 40]), vol: 0.45 }); }
         if ((D.flashT -= dt) <= 0) { D.flashT = 18 + Math.random() * 22; D.flash0 = t; Audio.sfx('thunder', { pos: A.w([80, 60, 20 + Math.random() * 40]), vol: 0.9 }); }
         const f = D.flash0 != null ? t - D.flash0 + 1.6 : 9;          // the flash leads the thunder
         const k = f < 0.1 ? 1 : f < 0.18 ? 0.2 : f < 0.3 ? 0.8 : f < 0.8 ? U.lerp(0.8, 0, (f - 0.3) / 0.5) : 0;
@@ -484,7 +482,6 @@
         if (D.tweens.length) D.tweens = D.tweens.filter(f => !f(dt));
       });
       mergeStatics(A);
-      A_ = null;
     },
     unload(A) { for (const l of A.data.loops) l.stop(0.4); if (A.data.opWound) A.data.opWound.ikT = {}; UI.prompt(null); },
   };
@@ -547,7 +544,7 @@
 
   // ---- 1.3 part A: crouch, cover, the bottle, the choke ------------------------------------------------------------------
   async function partA(G, A) {
-    const D = A.data, inv = Play.inventory, bottles = () => inv.items.bottle || 0;
+    const inv = Play.inventory, bottles = () => inv.items.bottle || 0;
     let had = bottles();
     teach(A, 'c – crouch', () => Play.crouched, { delay: 0.6, max: 14 });
     beat(A, () => { const n = bottles(); if (n < had) had = n; return n > had; }, () => {
@@ -619,7 +616,7 @@
       { cam: { type: 'crane', from: [O[0] + 3.5, 7.4, O[2] + 2.5], to: [O[0] + 2.2, 6.2, O[2] + 5.5], look: [O[0] - 6, 3.2, O[2] + 40], lens: 26, dur: 5.5 }, dur: 5.2, focus: null,
         cues: [{ t: 0.3, sfx: 'metal_creak', at: [O[0], 9, O[2] + 20], vol: 0.6 }, { t: 1.8, sfx: 'pigeons', at: [O[0] + 4, 9, O[2] + 12], vol: 0.5 }] },
       // the side door: they come in out of the rain and get down behind the pallets
-      { cam: { type: 'static', at: [O[0] - 10.0, 1.75, O[2] + 5.6], look: [O[0] - 12.8, 1.2, O[2] + 1.0], lens: 32, push: 0.03 }, dur: 3.6, focus: 'wai',
+      { cam: { type: 'static', at: [O[0] - 14.8, 1.4, O[2] + 3.9], look: [O[0] - 12.6, 1.1, O[2] + 0.8], lens: 30, push: 0.03 }, dur: 3.6, focus: 'wai',
         actions: [{ t: 0.1, who: 'wai', do: 'walkTo', at: 'mk_1c_wai', speed: 1.3, yaw: 0.15 }, { t: 0.5, who: 'chase', do: 'walkTo', at: 'mk_1c_start', speed: 1.2, yaw: 0.3 },
           { t: 2.9, who: 'wai', do: 'pose', name: 'crouch' }],
         cues: [{ t: 0.1, sfx: 'creak', at: [O[0] - 13, 1, O[2]], vol: 0.5 }] },
@@ -684,9 +681,9 @@
         actions: [{ t: 0, do: 'call', hook: 'c14.stairs' }, { t: 0.25, who: 'operator', do: 'walkTo', at: 'mk_14_op', speed: 0.8, yaw: 1.92 },
           { t: 0.3, who: 'chase', do: 'aim', at: 'operator' }, { t: 0.4, who: 'wai', do: 'walkTo', at: L(-9.9, 0, 42.5), speed: 1.2 }, { t: 1.8, who: 'wai', do: 'aim', at: 'operator' },
           { t: 1.2, who: 'operator', do: 'emote', name: 'exhausted' }] },
-      { cam: { type: 'static', at: L(-10.9, 1.35, 44.25), look: L(-12.8, 1.1, 45.3), lens: 36, push: 0.05 }, dur: 2.8, focus: 'operator',
+      { cam: { type: 'static', at: L(-10.9, 1.55, 44.25), look: L(-12.8, 1.32, 45.3), lens: 36, push: 0.05 }, dur: 2.8, focus: 'operator',
         actions: [{ t: 0.2, who: 'operator', do: 'lookAt', at: 'chase' }] },
-      { cam: { type: 'static', at: L(-13.75, 1.75, 45.2), look: L(-7.3, 1.62, 43.4), lens: 45, push: 0.04 }, hold: 0.3, focus: 'chase',
+      { cam: { type: 'static', at: L(-13.85, 1.78, 45.3), look: L(-7.3, 1.62, 43.4), lens: 40, push: 0.04 }, hold: 0.3, focus: 'chase',
         lines: [{ who: 'chase', text: 'And you are?', emote: 'tense', pause: 0.2, to: 'operator' }] },
       { cam: { type: 'static', at: L(-6.6, 1.78, 42.7), look: L(-12.8, 1.6, 45.3), lens: 50, push: 0.05 }, hold: 0.3, focus: 'operator',
         lines: [{ who: 'operator', text: 'Someone who needs a delivery.', emote: 'tense', pause: 0.3, to: 'chase' }] },
@@ -699,7 +696,6 @@
         actions: [{ t: 0.1, who: 'chase', do: 'pose', name: 'stand' }],
         lines: [{ who: 'chase', text: "What's the package?", emote: 'neutral', pause: 0.5, to: 'operator' }] },
       { cam: { type: 'static', at: L(-11.3, 1.65, 44.45), look: L(-12.8, 1.62, 45.3), lens: 55, push: 0.08 }, hold: 0.5, focus: 'operator',
-        actions: [{ t: 0.1, who: 'operator', do: 'gesture', name: 'wind_cord' }],
         lines: [{ who: 'operator', text: 'Come and see.', emote: 'neutral', pause: 0.9, to: 'chase' }] },
       // behind Chase's shoulder: she turns back into the dark of the stairwell; Wai looks at him
       { cam: { type: 'static', at: L(-6.6, 1.5, 42.6), look: L(-12.6, 1.2, 45.6), lens: 28 }, dur: 3.6, focus: 'operator',
@@ -733,8 +729,8 @@
     for (const b of D.blood) b.visible = true;
     D.door.userData.setOpen(0.95); D.stairDoor.userData.setOpen(0.85);
     if (w && w.poseName !== 'dead') w.pose('dead', { direct: true, dur: 0.2 });
-    if (op) { G.place(op, 'mk_14_op_back'); }
-    const ag = comp(wai); if (ag) ag.setBehaviour('scripted');
+    if (op) G.place(op, 'mk_14_op_back');
+    const ag = comp(wai); if (ag) ag.dismiss();
   };
   H['ch1.4'] = async G => {
     const cont = G.A && G.A.id === '1C' && G.A.data.part;
@@ -744,9 +740,9 @@
     G.control(false); UI.prompt(null); A.data.teach = null; A.data.beats.length = 0;
     const chase = G.actor('chase', 'chase'), wai = G.actor('wai', 'wai'), op = G.actor('operator', 'operator', 'mk_14_op_hide');
     if (!cont) { reset(chase); reset(wai); variant(wai, 'bruised'); kit(); }
-    reset(op); variant(op, 'wounded'); op.hold('revolver', 'r'); A.data.opWound = op;
+    reset(op); variant(op, 'wounded'); op.decal('fever'); op.hold('revolver', 'r'); A.data.opWound = op;
     if (!wai.held('r')) wai.hold('bat', 'r');
-    const ag = comp(wai); if (ag) ag.setBehaviour('scripted');
+    const ag = comp(wai); if (ag) ag.dismiss();            // 1.5 makes him a companion again (AI.companion)
     G.player(chase, { hud: false });                  // Director owns his hands from here (the revolver)
     if (!cont) G.fade('none', 0.8);
     await G.scene('1.4');

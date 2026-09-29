@@ -412,7 +412,7 @@
   H['p6.hit'] = G => {   // the Scroller hits them: Bub torn out of his arms, all three down
     const chase = G.who('chase'), bub = G.who('bub'), t = G.who('tackler'), f = G.marker('mk_p6_tackle');
     chase.detach(); t.stop();
-    G.place(bub, at6(G, -0.9, 1.25), f.yaw - PI / 2); bub.pose('lie', { dur: 0.35, direct: true });
+    G.place(bub, at6(G, -0.9, 1.25), f.yaw - PI / 2); bub.pose('dead', { dur: 0.35, direct: true });
     chase.pose('sit_ground', { dur: 0.4, direct: true });
     t.pose('crouch', { dur: 0.3 });
     Play.shake(0.3, 0.5);

@@ -103,7 +103,7 @@
       Build.prop('wall_display', { pos: [s * 6.92, 0, -2.4], yaw: -s * PI / 2, w: 3.2, lit: !ruin, worn: age });
     }
     // demo tables (P.3 switches every screen to the feed)
-    A.data.demo = (ruin ? [[-3.9, -3.4], [4.9, -5.3], [-3.9, -1.2]] : [[-3.9, -3.4], [3.9, -3.4], [-3.9, -1.2], [3.9, -1.2]]).map(([x, z], i) =>
+    A.data.demo = (ruin ? [[-3.9, -3.4], [5.0, -6.1], [-3.9, -1.2]] : [[-3.9, -3.4], [3.9, -3.4], [-3.9, -1.2], [3.9, -1.2]]).map(([x, z], i) =>
       Build.prop('demo_table', { pos: [x, 0, z], yaw: i & 1 ? 0.04 : -0.04, screen: ruin ? 'off' : 'demo', phones: ruin ? 2 : 6, worn: age }));
     // front of house: shopfront, parapet, pedestals, entry banner
     Build.prop('shopfront', { pos: [0, 0, 0], w: 14.3, h: 3.6, text: 'REDCLIFFE', open: ruin ? 0.35 : 1, faded: age, broken: ruin, lit: !ruin });
@@ -121,16 +121,15 @@
     for (let i = 0; i < 12; i++) keys.push([B(0.022, 0.006, 0.016), -0.03 + (i % 3) * 0.03, 0.064 + Math.floor(i / 3) * 0.004, 0.065 - Math.floor(i / 3) * 0.022, -0.12]);
     merged(base, [[dark, [[B(0.2, 0.05, 0.22), 0, 0.025, 0]]], [grey, [[B(0.18, 0.012, 0.12), 0, 0.055, 0.03, -0.12]]], [key, keys],
       [C(0x1a1a1a, { emissive: 0x7fd6a0, emissiveIntensity: 1.2 }), [[B(0.035, 0.012, 0.018), 0.06, 0.066, 0.075, -0.12]]]]);
-    // handset modelled like a held phone (long axis Y, face +Z) so the phone_ear pose fits it
-    const hs = new THREE.Group();
-    merged(hs, [[dark, [[B(0.05, 0.2, 0.035), 0, 0, 0], [B(0.06, 0.055, 0.05), 0, 0.085, 0.012], [B(0.06, 0.055, 0.05), 0, -0.085, 0.012]]]]);
-    hs.userData.grip = { p: [0.03, -0.075, 0.01], r: [0, PI / 2, 0] }; hs.userData.curl = 0.7;
-    const cradle = () => { base.add(hs); hs.position.set(0, 0.09, -0.03); hs.rotation.set(-PI / 2, 0, PI / 2); };
+    // the handset (Chars' landline handset, made for phone_ear); the live cord below runs from the base to its foot
+    const hs = Chars.props.handset(), foot = hs.userData.cord.foot.clone();
+    hs.remove(hs.userData.cord.mesh); delete hs.userData.cord;
+    const cradle = () => { base.add(hs); hs.position.set(0, 0.092, -0.03); hs.rotation.set(PI / 2, 0, PI / 2); };
     cradle();
     // coiled cord: base socket -> handset foot, rebuilt only when the handset moves
     const cordMat = C(0x1a1b1d, { rough: 0.6 }), cord = new THREE.Mesh(new THREE.BufferGeometry(), cordMat); cord.frustumCulled = false;
     A.group.add(cord);
-    const a = V(0, 0, 0), b = V(0, 0, 0), last = V(1e9, 0, 0), foot = V(0, -0.1, 0.005), pts = [], n = 90;
+    const a = V(0, 0, 0), b = V(0, 0, 0), last = V(1e9, 0, 0), pts = [], n = 90;
     A.update(() => {
       base.localToWorld(a.set(-0.1, 0.03, -0.05)); hs.localToWorld(b.copy(foot));
       if (b.distanceToSquared(last) < 1e-6) return;
@@ -296,15 +295,15 @@
   // ---- TITLE: the same store ten years on, dawn ---------------------------------------------------------------------
   CONTENT.levels.TITLE = {
     name: 'Optus Redcliffe — ten years on', origin: [0, 0, 0],
-    grade: 'title_dawn', fog: { color: 0x8a7c66, near: 10, far: 55 }, background: 0xc8b494, amb: 'title_dawn', surface: 'tile',
+    grade: 'title_dawn', fog: { color: 0x8c8272, near: 12, far: 66 }, background: 0xc8b494, amb: 'title_dawn', surface: 'tile',
     env: { top: 0x4a5664, horizon: 0x9a8468, bottom: 0x2a261e, intensity: 0.42, spots: [{ dir: [0.45, 0.3, 1], color: 0xffb070, power: 4 }] },
     build(A) {
       store(A, true);
       const fin = Save.data.finished, end = Save.data.lastEnding, R = U.rng(5);
       // dawn: a low sun through the smashed shopfront, a shaft through the collapsed ceiling bay, deep cool shade elsewhere
-      Build.hemi({ sky: 0x8a98a8, ground: 0x2a2418, intensity: 0.34 });
-      Build.sun({ dir: [0.45, -0.33, -0.83], color: 0xffbe7a, intensity: 6, area: 13, target: [0, 0, -5] });
-      Build.light('point', { pos: [3.3, 3.0, -5.4], color: 0xffd8a8, intensity: 6, distance: 7 });
+      Build.hemi({ sky: 0x7d93b4, ground: 0x2a2418, intensity: 0.4 });
+      Build.sun({ dir: [0.45, -0.33, -0.83], color: 0xffbe7a, intensity: 7.5, area: 13, target: [0, 0, -5] });
+      Build.light('point', { pos: [3.5, 3.0, -3.9], color: 0xffd8a8, intensity: 6, distance: 7 });   // the bay's bounce, on the polo's front
       Build.light('point', { pos: [0.5, 2.2, -8.6], color: 0x8a98b0, intensity: 1.5, distance: 7 });
       Build.light('spot', { pos: [-1.2, 3.8, -7.3], target: [-1.2, 1.0, -7.35], color: 0xffe2b8, intensity: 9, distance: 5, angle: 0.32, penumbra: 0.7 });
       // ceiling: tiles around a collapsed bay over the fig tree, exposed purlins, fallen panels
@@ -317,7 +316,7 @@
       Build.box(0.6, 0.03, 1.2, ceil, { pos: [5.4, 0.05, -4.2], rot: [0.1, 0.3, 0.12] });
       Build.box(40, 0.1, 40, C(0x9aaec4, { emissive: 0xd8e4f0, emissiveIntensity: 0.55 }), { pos: [0, 5.6, -5], solid: false, shadow: false });
       // the fig has taken the demo table; vines down the walls and out of the hole; moss, leaf litter, weeds in the cracks
-      Build.tree('fig', { pos: [4.9, 0, -5.3], scale: 0.36, seed: 3 });
+      Build.tree('fig', { pos: [5.0, 0, -6.1], scale: 0.36, seed: 3 });
       Build.vines({ box: [-6.95, 0.6, -9.6, -6.85, 3.3, -0.4], density: 1.3, seed: 11 });
       Build.vines({ box: [6.85, 1.2, -9.6, 6.95, 3.3, -5.0], density: 1.0, seed: 14 });
       Build.vines({ box: [2.6, 3.2, -7.0, 5.8, 3.3, -4.2], density: 1.6, hang: true, seed: 12 });
@@ -344,7 +343,7 @@
       Build.prop('queue_post', { pos: [0.85, 0, -3.3], worn: 1 });
       Build.prop('promo_banner', { pos: [-4.6, 0.12, -6.4], rot: [-1.35, 0.5, 0], text: 'MIDNIGHT LAUNCH — BE FIRST', w: 3.4, drop: 0.3, worn: 1 });
       Build.prop('cardboard_box', { pos: [-4.6, 0, -8.8], w: 0.5, h: 0.35, d: 0.4, open: true, worn: 1 });
-      Build.prop('whiteboard', { pos: [0, 1.1, -9.86], stand: false, w: 1.5, h: 0.95, text: 'b:MIDNIGHT LAUNCH\nCHASE 312\nLUKE 190\nr:TARGET 312', worn: 0.6 });
+      Build.prop('whiteboard', { pos: [0, 1.28, -9.86], stand: false, w: 1.5, h: 0.95, text: 'b:MIDNIGHT LAUNCH\nCHASE 312\nLUKE 190\nr:TARGET 312', worn: 0.6 });
       // outside: the car park gone to grass, a dead hatch, gum trees in the sun
       Build.floor(-40, 0, 40, 40, M('asphalt', { color: 0x7a7a70 }));
       Build.grass({ box: [-20, 3.6, 20, 22], count: 2600, height: 0.6 });
@@ -352,18 +351,18 @@
       Build.tree('gum', { pos: [-6, 0, 12], scale: 1.1, seed: 8 }); Build.tree('gum', { pos: [11, 0, 16], seed: 9 });
       Build.streetlight({ pos: [4, 0, 12.3], yaw: PI, kind: 'road', on: false, pool: false });
       // god rays: the collapsed bay and the smashed glass; dust turning in the beams
-      Build.godray({ pos: [4.2, 3.5, -5.6], dir: [0.1, -1, 0.15], w: 2.6, h: 4.4, color: 0xffd6a0, opacity: 0.42 });
+      Build.godray({ pos: [4.2, 3.5, -5.6], dir: [0.1, -1, 0.15], w: 2.6, h: 4.4, color: 0xffd6a0, opacity: 0.5 });
       Build.godray({ pos: [-3.2, 3.0, 0.4], dir: [0.45, -0.33, -0.83], w: 1.8, h: 8, color: 0xffc080, opacity: 0.2 });
       Build.godray({ pos: [0.8, 3.0, 0.4], dir: [0.45, -0.33, -0.83], w: 1.6, h: 7, color: 0xffc080, opacity: 0.16 });
       Build.godray({ pos: [-1.2, 3.35, -7.4], dir: [0.02, -1, 0.03], w: 0.8, h: 2.4, color: 0xffe6c0, opacity: 0.3 });
       Build.dust({ box: [-2, 0.3, -8, 6, 3.2, -1], count: 420, opacity: 0.6, size: 0.018, color: 0xffe8c8 });
       // the hanger over the counter; the polo on it sways in the breeze from the broken window (gone after the story)
-      const hang = new THREE.Group(); hang.position.set(2.8, 2.64, -5.45); A.group.add(hang);
+      const hang = new THREE.Group(); hang.position.set(3.3, 2.58, -4.7); A.group.add(hang);
       const wire = C(0x8a8a88, { rough: 0.4, metal: 0.8 });
-      Build.box(0.035, 0.68, 0.035, C(0x3a3a38, { metal: 0.6, rough: 0.4 }), { pos: [2.8, 2.64, -5.45], solid: false });
+      Build.box(0.012, 0.66, 0.012, wire, { pos: [3.3, 2.62, -4.7], solid: false });
       Build.mesh(new THREE.TorusGeometry(0.035, 0.004, 4, 12, PI * 1.5), wire, { parent: hang, pos: [0, 0.03, 0] });
       Build.mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.46, 4), wire, { parent: hang, pos: [0, -0.1, 0], rot: [0, 0, PI / 2] });
-      if (!fin) Build.mesh(poloGeo(), M('fabric', { color: 0xd4c27c }), { parent: hang, pos: [0, -0.1, 0], shadow: true });
+      if (!fin) Build.mesh(poloGeo(), M('fabric', { color: 0xe6d488 }), { parent: hang, pos: [0, -0.1, 0], shadow: true });
       A.update((dt, t) => { hang.rotation.z = Math.sin(t * 0.7) * 0.07 + Math.sin(t * 1.9) * 0.02; hang.rotation.y = 0.5 + Math.sin(t * 0.45) * 0.3; });
       // two mynas on the counter
       const birds = [[-1.9, 1.0, -7.25, 0.8], [0.45, 2.07, -9.82, -0.3]].map(([x, y, z, yaw]) => {
@@ -386,10 +385,11 @@
         Build.mesh(new THREE.CylinderGeometry(0.042, 0.038, 0.1, 14), C(c, { rough: 0.4 }), { pos: [mx, 1.05, mz] });
         Build.mesh(new THREE.TorusGeometry(0.028, 0.007, 6, 10, PI), C(c, { rough: 0.4 }), { pos: [mx + 0.045, 1.05, mz], rot: [0, 0, -PI / 2] });
       }
-      // a slow live drift from the front-right corner toward Chase's counter and back (the menu sits over the shaded west wall)
+      // a slow live drift from inside the smashed front toward the counters and back, tilting up to the polo in the light; the
+      // fig frames the right, the menu sits over the shaded west wall
       const pos = V(0, 0, 0), target = V(0, 0, 0);
       Director.manual({ pos, target, fov: U.lensToFov(35) });
-      const P0 = V(6.0, 1.55, -0.4), T0 = V(-1.8, 1.3, -8.8), P1 = V(4.3, 1.5, -1.9), T1 = V(-1.9, 1.2, -8.6);
+      const P0 = V(4.4, 1.45, -0.3), T0 = V(0.4, 1.4, -9.0), P1 = V(3.6, 1.42, -1.3), T1 = V(0.0, 1.75, -9.0);
       A.update((dt, t) => {
         const k = (1 - Math.cos(t * 0.045)) / 2, w = Math.sin(t * 0.13);
         pos.lerpVectors(P0, P1, k).y += w * 0.04; target.lerpVectors(T0, T1, k);
@@ -450,7 +450,7 @@
         actions: [{ t: 0, who: 'chase', do: 'walkTo', at: 'mk_whiteboard', yaw: PI }, { t: 0.2, who: 'customer', do: 'emote', name: 'smile' },
           { t: 1.7, who: 'chase', do: 'gesture', name: 'point', to: [-0.5, 1.66, -9.86] }, { t: 2.3, do: 'call', hook: 'p1.board', args: 300 }, { t: 3.3, who: 'chase', do: 'turnTo', to: 'luke' },
           { t: 1.9, who: 'luke', do: 'walkTo', at: 'mk_luke_board', yaw: -2.15 }] },
-      { cam: { type: 'static', at: [0.5, 1.6, -6.35], look: [0.2, 1.45, -9.0], lens: 32, push: 0.05 }, hold: 0.7,
+      { cam: { type: 'static', at: [0.05, 1.58, -6.2], look: [0.0, 1.48, -9.0], lens: 30, push: 0.05 }, hold: 0.7,
         lines: [{ who: 'luke', text: 'Three hundred.', emote: 'smirk', pause: 0.4 }, { who: 'chase', text: 'Three-twelve by midnight.', emote: 'smile' },
           { who: 'luke', text: "It's eleven-forty.", emote: 'neutral' }, { who: 'chase', text: 'Then stop talking to me.', emote: 'smirk', pause: 0.4 }] },
       // 5. The store phone. Luke answers, rolls his eyes, holds it out.
@@ -491,14 +491,14 @@
       { cam: { type: 'ots', over: 'luke', on: 'chase', push: 0.05 }, hold: 0.5,
         lines: [{ who: 'chase', text: "Store's not gonna know.", emote: 'smirk', pause: 0.3 }] },
       // 7. The Store Manager, from the back office. Badge straight, and the smile for the next customer.
-      { cam: { type: 'static', at: [-1.2, 1.62, -5.35], look: [-1.6, 1.5, -8.2], lens: 50 }, dur: 5.4, focus: 'chase',
+      { cam: { type: 'static', at: [-0.8, 1.6, -5.25], look: [-1.6, 1.5, -8.2], lens: 45, push: 0.04 }, dur: 5.4, focus: 'chase',
         actions: [{ t: 0.5, who: 'chase', do: 'lookAt', at: [-5.9, 1.6, -10.6] }, { t: 0.6, who: 'luke', do: 'lookAt', at: [-5.9, 1.6, -10.6] }, { t: 1.6, who: 'chase', do: 'pose', name: 'stand' },
           { t: 1.7, do: 'call', hook: 'p1.pocket' }, { t: 1.9, who: 'chase', do: 'gesture', name: 'pull_collar' }, { t: 2.2, who: 'luke', do: 'walkTo', at: 'mk_luke_counter', yaw: 0 },
           { t: 2.6, who: 'chase', do: 'walkTo', at: 'mk_chase_counter', yaw: 0 }, { t: 3.4, who: 'chase', do: 'lookAt', at: 'next_customer' }, { t: 3.6, who: 'chase', do: 'emote', name: 'smile' }],
         lines: [{ who: 'store_manager', off: true, text: 'Chase! Customer!', emote: 'angry', pause: 0.2 }] },
     ],
     end: { place: { chase: 'mk_chase_counter', luke: 'mk_luke_counter', customer: 'mk_customer_side', next_customer: 'mk_customer' }, pose: { chase: 'stand', luke: 'stand' }, call: { hook: 'p1.settle' } },
-    exit: { cut: true },
+    exit: { hold: true },   // hard cut: prologue.P2 builds the house behind this frame and cuts straight to Bub
   };
 
   // ---- hooks --------------------------------------------------------------------------------------------------------

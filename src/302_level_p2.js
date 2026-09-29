@@ -53,7 +53,7 @@
 (() => {
   const PI = Math.PI, M = (n, o) => Tex.mat(n, o), C = (h, o) => Tex.color(h, o), V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
   const HT = 2.6, OX = 500, w = (x, y, z) => [x + OX, y, z];
-  const POV_BED = w(-4.4, 1.12, -3.28);    // where the frame on her sitting on the bed ends up (P.2.up dollies on from here)
+  const POV_BED = w(-4.55, 0.98, -3.95);    // where the frame on her sitting on the bed ends up (P.2.up dollies on from here)
   const MSG = 'proud of u dad. dont sell too m', DAD = 'Dad 🏆', NOTE = 'INFINITE is ready. Installs at 12:00. A feed that finally understands you.';
   const THREAD = [{ stamp: 'Today 11:39 PM' }, { from: 'me', text: 'wat time u home' }, { from: 'them', text: 'after midnight. go to bed. love u' }];
   const LINES = {
@@ -242,7 +242,7 @@
     Build.box(0.46, 0.1, 0.34, M('fabric', { color: 0x9ab0c8 }), { pos: [-1.5, 0.3, -0.95], bevel: 0.04, solid: false });
     // lounge
     Build.prop('rug', { pos: [3.25, 0, 1.2], yaw: PI / 2, w: 2.4, d: 1.8, color: 0x7a4a3a, border: 0xd8c8a8 });
-    Build.prop('couch', { pos: [1.9, 0, 1.2], yaw: PI / 2, w: 2.1, color: 0x56687a });
+    Build.prop('couch', { pos: [1.9, 0, 1.2], yaw: PI / 2, w: 2.1, color: 0x56687a, throw: false });
     D.table = Build.prop('coffee_table', { pos: [3.2, 0, 1.2], yaw: PI / 2, dynamic: true });
     D.tv = Build.prop('tv', { pos: [4.85, 0, 1.2], yaw: -PI / 2, w: 1.1, light: 1.6 });
     D.lampOn = Build.prop('lamp', { pos: [1.72, 0, -0.22], kind: 'floor', dynamic: true });
@@ -355,13 +355,13 @@
       D.street = Build.light('spot', { pos: [7.0, 5.6, 13.1], target: [5.0, 0, 4.3], color: 0xff9a3c, intensity: 340, distance: 30, angle: 0.64, penumbra: 0.6, shadow: true });
       D.street.shadow.camera.far = 30;
       Build.pool({ pos: [7.0, -0.1, 12.6], r: 4.5, color: 0xff9a40, opacity: 0.18 });
-      D.fairy = Build.light('point', { pos: [-5.5, 1.7, -3.5], color: 0xffb38a, intensity: 2.2, distance: 5.5 });
+      D.fairy = Build.light('point', { pos: [-6.3, 2.25, -3.3], color: 0xffb38a, intensity: 2.6, distance: 6 });   // up by the strings (clear of her head)
       D.hall = Build.light('point', { pos: [-2.6, 2.2, -2.7], color: 0xffcf98, intensity: 1.1, distance: 5 });
       D.lamp = Build.light('point', { pos: [1.72, 1.4, -0.22], color: 0xffc080, intensity: 3.2, distance: 7 });
       D.kitchen = Build.light('point', { pos: [1.8, 1.1, -4.3], color: 0xffd6a0, intensity: 1.6, distance: 4.5 });
       D.porch = Build.light('point', { pos: [0.7, 2.1, 3.7], color: 0xffc070, intensity: 2.2, distance: 7 });
       D.head = Build.light('spot', { pos: [0, 1, 20], target: [0, 0, 0], color: 0xf4f0e6, intensity: 0, distance: 40, angle: 0.5, penumbra: 0.5 });
-      D.car = Build.car('hatch', { pos: [-30, -0.14, 14.6], yaw: PI / 2, color: 0x3a4652, lights: true, beams: true, dynamic: true });
+      D.car = Build.car('sedan', { pos: [-30, -0.14, 14.6], yaw: PI / 2, color: 0x1c2636, plate: '729 LKE', lights: true, beams: true, dynamic: true });
       D.car.visible = false;
       D.phoneL = Build.light('point', { pos: [-5.88, 0.7, -3.2], color: 0x8ab4ff, intensity: 0, distance: 1.8 });   // the phone's glow on her face (follows D.glowAt)
       Build.dust({ box: [-2, 0.3, -4.8, 5, 2.4, 3], count: 120, opacity: 0.16, size: 0.013 });
@@ -411,7 +411,7 @@
           if (k >= 1) D.tweens.splice(i, 1);
         }
         if (D.drive) driveCar(D, dt);
-        D.phoneL.intensity = U.damp(D.phoneL.intensity, D.glowAt ? 0.08 : 0, 5, dt);
+        D.phoneL.intensity = U.damp(D.phoneL.intensity, D.glowAt ? 0.03 : 0, 5, dt);
         if (D.glowAt) D.glowAt(D.phoneL.position).sub(A.origin);
       });
     },
@@ -522,7 +522,7 @@
     A.data.lampOn.visible = true;
   }
   // the phone light rides between her hand and her eyes
-  function glowOn(c) { const e = V(); P2().data.glowAt = o => c.point('hand_r', o).lerp(c.point('eyes', e), 0.55); }
+  function glowOn(c) { const e = V(); P2().data.glowAt = o => c.point('hand_r', o).lerp(c.point('eyes', e), 0.35); }
   function phoneUp(G, bub, tex) {
     const ph = bub.held('r') || bub.hold('phone', 'r');
     bub.phoneGlow(true); screen(ph, tex); glowOn(bub);
@@ -535,6 +535,7 @@
     const bub = G.actor('bub', 'bub', 'mk_bub_bed');
     for (const h of ['r', 'l']) if (bub.held(h)) bub.drop(h, { remove: true });
     bub.pose('lie', { dur: 0.01 }); bub.emote('neutral'); bub.lookAt(A.w([-5.9, 2.4, -3.4]));
+    bub.ikT = { L: { p: A.w([-6.14, 0.7, -4.0]), w: 1 } };          // her left hand resting on her stomach
     const ph = bub.hold('phone', 'r'); screen(ph, Tex.screen('lock', { time: '11:44' })); ph.visible = false;
     const bedPh = A.w([-5.72, 0.6, -4.02]);
     D.glowAt = o => o.copy(bedPh).setY(0.72);                       // the phone on the duvet by her hand lights her from the side
@@ -544,13 +545,13 @@
     const cam = { pos: A.w([-5.42, 1.58, -3.52]), target: A.w([-6.1, 0.64, -4.26]), fov: U.lensToFov(35) };
     let push = null;
     const drift = (to, dur) => { const from = cam.pos.clone(), t0 = G.t; if (push) A.updaters.splice(A.updaters.indexOf(push), 1); push = A.update(() => { cam.pos.lerpVectors(from, to, U.ease.sine(U.clamp((G.t - t0) / dur))); }); };
-    Director.manual(cam); drift(A.w([-5.6, 1.42, -3.72]), 12);
+    Director.manual(cam); Director.release(0.001); drift(A.w([-5.6, 1.42, -3.72]), 12);   // (the hard cut from the store)
     await G.wait(1.3);
     G.sfx('notif_chime', { pos: bedPh, vol: 0.6 }); bub.lookAt(bedPh);
     UI.phone({ kind: 'notification', time: '11:44 PM', notif: { app: 'INFINITE', text: NOTE } });
     await G.wait(1.6);
-    cam.pos.copy(A.w([-4.22, 1.16, -3.18])); cam.target.copy(A.w([-5.37, 1.0, -3.84])); cam.fov = U.lensToFov(32); drift(V(...POV_BED), 8);
-    bub.pose('sit', { dur: 1.3 }); tween(bub, [-5.45, 0.07, -3.6], PI / 2, 1.3); bub.gesture('hand_over', { to: bedPh, hand: 'l' });   // up onto the edge of the bed
+    cam.pos.copy(A.w([-4.4, 1.02, -4.05])); cam.target.copy(A.w([-5.62, 0.9, -3.85])); cam.fov = U.lensToFov(32); drift(V(...POV_BED), 8);   // low at her left front, her face in the phone's light (left of the notification)
+    bub.ikT = {}; bub.pose('sit', { dur: 1.3 }); tween(bub, [-5.45, 0.07, -3.6], PI / 2, 1.3); bub.gesture('hand_over', { to: bedPh, hand: 'l' });   // up onto the edge of the bed
     await G.wait(0.9);
     D.bedPhone.visible = false; D.bedGlow.visible = false;
     ph.visible = true; bub.phoneGlow(true); screen(ph, Tex.screen('lock', { time: '11:44' })); glowOn(bub); bub.pose('sit_phone', { dur: 0.7 });
@@ -661,8 +662,8 @@
   HK['p2.send'] = G => { screen(G.who('bub').held('r'), msgTex(true)); };
   HK['p2.phoneOff'] = G => { G.who('bub').phoneGlow(false); P2().data.glowAt = null; };
   HK['p3.slam'] = G => { HK['p1.slamPhone'](G); };
-  const bubClose = (x, push, extra = {}) => Object.assign({ type: 'static', at: { of: 'bub', off: [x, 1.0, 0.95] }, look: 'bub.eyes', lens: 65, push }, extra);
-  const chaseClose = (x, push, extra = {}) => Object.assign({ type: 'static', at: { of: 'chase', off: [x, 1.68, 1.05] }, look: 'chase.eyes', lens: 65, push }, extra);
+  const bubClose = (x, push, extra = {}) => Object.assign({ type: 'static', at: { of: 'bub', off: [x * 1.2, 1.0, 1.15] }, look: 'bub.eyes', lens: 65, push }, extra);
+  const chaseClose = (x, push, extra = {}) => Object.assign({ type: 'static', at: { of: 'chase', off: [x * 1.2, 1.68, 1.28] }, look: 'chase.eyes', lens: 65, push }, extra);
   const house = { t: 0, call: 'p2.house' }, store = { t: 0, call: 'p2.store' };
   CONTENT.scenes['P.3'] = {
     title: 'The Call', area: 'P2', grade: 'launch_home', music: null,
@@ -691,17 +692,18 @@
           { who: 'chase', text: 'Bub. Listen to me. Turn your phone off.', emote: 'tense', pause: 0.5 }] },
       { cam: bubClose(0.45, 0.03), focus: 'bub', hold: 0.15, cues: [house],
         lines: [{ who: 'bub', text: 'What? I\'m literally texting y—', emote: 'smirk', pause: 0.3 }] },
-      { cam: chaseClose(-0.5, 0.05, { lens: 75, handheld: 0.25 }), focus: 'chase', hold: 0.3, cues: [store],
+      { cam: chaseClose(-0.5, 0.05, { lens: 62, handheld: 0.25 }), focus: 'chase', hold: 0.3, cues: [store],
         lines: [{ who: 'chase', text: 'Turn it off. Right now. Don\'t look at anything on it. Don\'t open anything.', emote: 'tense', pause: 0.1 }] },
-      { cam: bubClose(0.45, 0.04, { lens: 72 }), focus: 'bub', hold: 0.5, cues: [house],
+      { cam: bubClose(0.45, 0.04, { lens: 62 }), focus: 'bub', hold: 0.5, cues: [house],
         lines: [{ who: 'bub', text: 'Dad, you\'re being weird.', emote: 'tense', pause: 0.3 }] },
-      { cam: chaseClose(-0.5, 0.09, { lens: 85 }), focus: 'chase', hold: 0.8, cues: [store],
+      { cam: chaseClose(-0.5, 0.09, { lens: 68 }), focus: 'chase', hold: 0.8, cues: [store],
         lines: [{ who: 'chase', text: 'Bub. I need you to do this for me. Please.', emote: 'sad', pause: 0.6 }] },
-      { cam: bubClose(0.42, 0.09, { lens: 85 }), focus: 'bub', hold: 0.9, cues: [house],
+      { cam: bubClose(0.42, 0.09, { lens: 68 }), focus: 'bub', hold: 0.9, cues: [house],
         actions: [{ t: 0.4, who: 'bub', do: 'emote', name: 'afraid' }],
         lines: [{ who: 'bub', text: '…Okay. Okay. Love you. Turning it off.', emote: 'afraid', pause: 1.1 }] },
-      // 4. Her thumb: send on the half-finished message, then the power button. Sending… and black.
-      { cam: { type: 'static', at: { of: 'bub', off: [0.2, 1.12, -0.16] }, look: 'bub.hand_r', lens: 50, push: 0.03 }, dur: 5.0, focus: 'bub.hand_r',
+      // 4. Her thumb on the screen (the phone overlay): send on the half-finished message, then the power button. Sending…
+      //    and black; the glow goes out of her face.
+      { cam: { type: 'static', at: { of: 'bub', off: [-0.42, 0.98, 0.98] }, look: 'bub.eyes', lens: 50, push: 0.03 }, dur: 5.0, focus: 'bub',
         actions: [{ t: 0, do: 'call', hook: 'p2.hangUp' }, { t: 1.3, do: 'call', hook: 'p2.send' }, { t: 3.4, do: 'call', hook: 'p2.phoneOff' }],
         cues: [{ t: 0.2, ui: { phone: { kind: 'messages', title: DAD, time: '11:59 PM', lines: THREAD, draft: MSG, caret: false } } },
           { t: 1.3, ui: { phone: { kind: 'messages', title: DAD, time: '11:59 PM', lines: [...THREAD, { from: 'me', text: MSG, status: 'Sending…' }], draft: '', caret: false } } },
@@ -710,10 +712,11 @@
       // 5. Store. He lowers his phone: INFINITE — Installing… 42%. One beat too long.
       { cam: chaseClose(-0.62, 0.02, { lens: 50 }), dur: 2.4, focus: 'chase', cues: [store],
         actions: [{ t: 0.3, who: 'chase', do: 'lookAt', at: null }, { t: 0.4, who: 'chase', do: 'pose', name: 'phone' }, { t: 0.6, who: 'chase', do: 'emote', name: 'exhausted' }] },
-      { cam: { type: 'extreme_close', who: 'chase', part: 'phone' }, dur: 2.8, focus: 'chase.hand_r' },
+      { cam: { type: 'extreme_close', who: 'chase', part: 'phone' }, dur: 2.8, focus: 'chase.hand_r',
+        cues: [{ t: 0.2, ui: { phone: { kind: 'install', title: 'INFINITE', progress: 0.42, time: '11:59 PM' } } }] },
       { cam: { type: 'static', at: { of: 'chase', off: [-1.15, 1.5, 1.6] }, look: { of: 'chase', off: [0.12, 1.22, 0.2] }, lens: 35 }, dur: 2.2, focus: 'chase',
         actions: [{ t: 0.05, who: 'chase', do: 'pose', name: 'stand' }, { t: 0.1, who: 'chase', do: 'emote', name: 'angry' }, { t: 0.1, who: 'chase', do: 'gesture', name: 'slam_phone' }, { t: 0.72, do: 'call', hook: 'p3.slam' }],
-        cues: [{ t: 0.72, sfx: 'phone_slam', at: [-1.25, 1.02, -7.62], vol: 1 }, { t: 0.72, shake: 0.35, dur: 0.35 }] },
+        cues: [{ t: 0, ui: { phone: null } }, { t: 0.72, sfx: 'phone_slam', at: [-1.25, 1.02, -7.62], vol: 1 }, { t: 0.72, shake: 0.35, dur: 0.35 }] },
       { cam: { type: 'static', at: { of: 'luke', off: [0.45, 1.62, 1.3] }, look: 'luke.eyes', lens: 60 }, focus: 'luke', hold: 0.3,
         actions: [{ t: 0, who: 'luke', do: 'lookAt', at: 'chase' }, { t: 0, who: 'luke', do: 'emote', name: 'shocked' }],
         lines: [{ who: 'luke', text: 'Chase—', emote: 'shocked', pause: 0.5, to: 'chase' }] },
@@ -721,7 +724,7 @@
         actions: [{ t: 0, who: 'chase', do: 'lookAt', at: 'luke' }],
         lines: [{ who: 'chase', text: 'Get the car.', emote: 'tense', pause: 0.5, to: 'luke' }] },
     ],
-    exit: { cut: true },
+    exit: { hold: true },   // hard cut: prologue.P4 sets the dark house up behind this frame
   };
 
   // ---- P.4 — Home --------------------------------------------------------------------------------------------------
@@ -746,7 +749,7 @@
       const c = G.actor(id, def, mk); c.stop(); c.detach(); c.pose('stand', { dur: 0.01 }); c.setVisible(false);
       for (const h of ['r', 'l']) if (c.held(h)) c.drop(h, { remove: true });
     }
-    G.player(bub, BUB); Play.snapCamera();
+    G.player(bub, BUB); Play.snapCamera(); Director.release(0.001);
     G.control(true);
     // 1. she goes to the TV and turns it off herself
     const tv = A.w([4.3, 0, 1.2]), scr = A.w([4.83, 0.9, 1.2]);
@@ -847,16 +850,16 @@
       { cam: { type: 'two_shot', a: 'chase', b: 'bub', side: 'right', lens: 40 }, focus: 'chase', hold: 0.3,
         actions: [{ t: 0, who: 'chase', do: 'turnTo', to: 'bub', dur: 0.3 }, { t: 0.35, who: 'chase', do: 'attach', to: 'bub', mode: 'face_hold' }, { t: 0.4, who: 'bub', do: 'emote', name: 'crying' }],
         lines: [{ who: 'chase', text: 'You okay? Look at me. You okay?', emote: 'tense', pause: 0.9, to: 'bub' }] },
-      { cam: { type: 'ots', over: 'chase', on: 'bub', push: 0.06 }, focus: 'bub', hold: 0.5,
+      { cam: { type: 'static', at: { of: 'chase', off: [0.55, 1.25, 0.95] }, look: 'bub.eyes', lens: 50, push: 0.06 }, focus: 'bub', hold: 0.5,   // her face in his hands, from his right
         lines: [{ who: 'bub', text: 'He was trying to show me something.', emote: 'afraid', pause: 0.4, to: 'chase' }] },
       { cam: { type: 'ots', over: 'bub', on: 'chase', push: 0.08 }, focus: 'chase', hold: 0.4,
         lines: [{ who: 'chase', text: 'Don\'t look at anyone\'s hands. Anyone\'s. Car. Now.', emote: 'tense', pause: 0.3, to: 'bub' }] },
       // out into the headlights; his phone still scrolling on the floor
-      { cam: { type: 'static', at: w(3.12, 0.2, 2.36), look: w(0.1, 0.9, 3.0), lens: 28 }, dur: 5.2, focus: { rack: [w(2.6, 0.02, 2.5), 'bub'], at: 1.6, dur: 1.8 },
+      { cam: { type: 'static', at: w(3.5, 0.1, 2.42), look: w(0.3, 0.5, 3.1), lens: 28 }, dur: 5.2, focus: { rack: [w(2.6, 0.02, 2.5), 'bub'], at: 1.6, dur: 1.8 },
         actions: [{ t: 0, who: 'chase', do: 'detach' }, { t: 0.1, who: 'chase', do: 'gesture', name: 'hand_on_shoulder', to: 'bub', hold: true },
           { t: 0.1, who: 'luke', do: 'walkTo', path: [w(1.4, 0, 2.6), w(0.1, 0, 3.9)], speed: 2.0 }, { t: 0.3, who: 'bub', do: 'walkTo', path: [w(2.4, 0, -1.2), w(1.15, 0, -0.5), w(1.05, 0, 2.5), w(0.1, 0, 3.8)], speed: 2.0 },
           { t: 0.4, who: 'chase', do: 'walkTo', path: [w(2.2, 0, -1.4), w(0.9, 0, -0.6), w(0.8, 0, 2.4), w(0.15, 0, 3.6)], speed: 2.0 }] },
     ],
-    exit: { cut: true },
+    exit: { hold: true },   // hard cut to the back seat: prologue.P5 builds the streets behind this frame
   };
 })();
