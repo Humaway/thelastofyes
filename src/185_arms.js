@@ -575,9 +575,13 @@ const Arms = (() => {
     const sh = c.point('shoulder_r', new V3()), d = camDir(new V3());
     if (bow) uprightBow(c, S.aim ? d : U.fwd(c.yaw, _b));
     if (S.aim && !g.bow) {
-      const P = aimPoint(S, new V3()), dir = P.distanceTo(sh) > 1.5 ? P.sub(sh).normalize() : d;
-      T.R = { p: sh.clone().addScaledVector(dir, 0.52).addScaledVector(_up, -0.04), w: 1 };
-      T.L = g.prop === 'revolver' || g.prop === 'pistol' ? { p: T.R.p.clone().addScaledVector(_up, -0.03).add(_b.set(Math.cos(c.yaw) * 0.04, 0, -Math.sin(c.yaw) * 0.04)), w: 0.9 } : null;
+      // a handgun goes out in both hands on the centre line at eye height (the over-the-shoulder camera sees it clear of the
+      // shoulder); a long gun stays on the right shoulder, the left hand on its fore-end
+      const hand = g.prop === 'revolver' || g.prop === 'pistol';
+      const o = hand ? c.point('shoulder_l', new V3()).add(sh).multiplyScalar(0.5).addScaledVector(_up, 0.13) : sh.clone().addScaledVector(_up, -0.04);
+      const P = aimPoint(S, new V3()), dir = P.distanceTo(o) > 1.5 ? P.sub(o).normalize() : d;
+      T.R = { p: o.addScaledVector(dir, hand ? 0.5 : 0.52), w: 1 };
+      T.L = hand ? { p: T.R.p.clone().addScaledVector(_up, -0.07).addScaledVector(dir, -0.03).add(_b.set(Math.cos(c.yaw) * 0.02, 0, -Math.sin(c.yaw) * 0.02)), w: 0.9 } : null;   // cups the grip from below
     } else if (S.aim && g.bow) {
       const sl = c.point('shoulder_l', new V3());
       T.L = { p: sl.clone().addScaledVector(d, 0.62), w: 1 };

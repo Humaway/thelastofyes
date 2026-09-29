@@ -1,7 +1,8 @@
 // ============================================================================
 // Trav — context traversal on Space for the player (internal to Play; see the A.* helpers in the Play header):
 // vault, climb (≤ 2 m, or marked ledges), drop down, ladders (fixed and portable), squeeze gaps, planks carried and
-// laid across gaps, pallets pushed through deep water, two-person boosts. Owned by: systems (player) agent.
+// laid across gaps, pallets pushed through deep water, two-person boosts, dumpsters rolled into place, pull-start
+// generators. Owned by: systems (player) agent.
 //   Trav.extendArea(A, S) · Trav.unloadArea(A) · Trav.update(S, dt)   (S = Play's shared player state)
 // Traversal needs profile.combat or profile.canJump. Every move is an exclusive Play action that drives the root.
 // ============================================================================
@@ -41,8 +42,11 @@ const Trav = (() => {
     A.plank = o => portable(A, S, 'plank', o);
     A.boost = o => { const s = { A, kind: 'boost', at: A.w(o.at), top: A.w(o.top), partner: o.partner || 'chloe' }; spots.push(s); return s; };
     A.pallet = o => pallet(A, S, o);
+    A.dumpster = o => dumpster(A, S, o);
+    A.generator = o => generator(A, S, o);
   }
   function unloadArea(A) {
+    for (const it of items) if (it.A === A && it.loop) it.loop.stop(0.3);
     for (const l of [spots, items]) for (let i = l.length - 1; i >= 0; i--) if (l[i].A === A) l.splice(i, 1);
   }
   function fixedLadder(A, bottom, top, yaw) {
@@ -161,6 +165,118 @@ const Trav = (() => {
     P.mesh.position.set(P.pos.x - P.A.origin.x, P.y - 0.02 + bob - P.A.origin.y, P.pos.z - P.A.origin.z);
     P.mesh.rotation.set(Math.sin(P.t * 1.3) * 0.02, P.mesh.rotation.y, Math.sin(P.t * 1.1 + 1) * 0.02);
     if (P.rider) { P.rider.root.position.set(P.pos.x, P.y + 0.14 + bob, P.pos.z); P.rider.setMove(0, { crouch: true }); }
+  }
+
+  // ---- dumpsters ------------------------------------------------------------------------------------------------------
+  // a commercial bin on castors that rolls along a straight track (at → to), long side along it; grab an end with E, then
+  // move along the track to push or pull it (loud). Its lid is walkable: parked under a fire escape it is a step up.
+  const DL = 0.85, DW = 0.56, DH = 1.18;              // half length, half width, lid height
+  function dumpsterMesh() {
+    const g = new THREE.Group(), body = Tex.mat('metal_painted', { color: 0x2f5a3c }), dk = Tex.color(0x1c1e1f, { rough: 0.8 });
+    box(g, DL * 2, 1.03, DW * 2, body, 0, 0.62, 0);
+    for (const y of [0.3, 0.8]) box(g, DL * 2 + 0.02, 0.06, DW * 2 + 0.03, body, 0, y, 0);     // pressed ribs
+    box(g, DL * 2 + 0.04, 0.05, DW * 2 + 0.06, dk, 0, DH - 0.025, -0.02);
+    for (const s of [-1, 1]) { box(g, 0.04, 0.04, DW * 1.5, metal(), s * (DL + 0.06), 0.95, 0); for (const z of [-0.3, 0.3]) box(g, 0.08, 0.03, 0.03, metal(), s * (DL + 0.03), 0.95, z); }
+    for (const x of [-1, 1]) for (const z of [-1, 1]) box(g, 0.08, 0.1, 0.1, dk, x * (DL - 0.12), 0.05, z * (DW - 0.1));
+    return g;
+  }
+  function dumpster(A, S, o) {
+    const from = A.w(o.at), dir = A.w(o.to).sub(from).setY(0), len = dir.length(); dir.normalize();
+    const D = { A, kind: 'dumpster', from, dir, len, s: 0, pos: from.clone(), docked: false, onArrive: o.onArrive, mesh: dumpsterMesh(),
+      box: World.addBox([0, 0, 0], [0, 0, 0], { surface: 'metal' }) };
+    D.mesh.rotation.y = Math.atan2(-dir.z, dir.x);
+    A.add(D.mesh);
+    const atEnd = () => { const p = S.c.root.position; return Math.abs((p.x - D.pos.x) * dir.x + (p.z - D.pos.z) * dir.z) > DL - 0.1; };
+    D.use = A.interactable({ at: o.at, r: 1.9, once: false, prompt: 'e – grab', cond: () => !D.docked && !S.act && atEnd(), use: () => drag(S, D) });
+    binPlace(D);
+    items.push(D);
+    return D;
+  }
+  function binPlace(D) {
+    const hx = Math.abs(D.dir.x) * DL + Math.abs(D.dir.z) * DW, hz = Math.abs(D.dir.z) * DL + Math.abs(D.dir.x) * DW;
+    D.pos.copy(D.from).addScaledVector(D.dir, D.s);
+    D.box.min.set(D.pos.x - hx, D.pos.y, D.pos.z - hz); D.box.max.set(D.pos.x + hx, D.pos.y + DH, D.pos.z + hz);
+    D.mesh.position.copy(D.pos).sub(D.A.origin);
+    D.use.pos.copy(D.pos);
+  }
+  function drag(S, D) {
+    const c = S.c, p = c.root.position, end = Math.sign((p.x - D.pos.x) * D.dir.x + (p.z - D.pos.z) * D.dir.z) || 1;
+    const side = new V3(-D.dir.z, 0, D.dir.x);
+    let loud = 0;
+    Audio.sfx('metal_hit', { pos: D.pos, vol: 0.35 });
+    S.start({
+      name: 'drag', root: true, A: D.A, cam: { dist: 2.9, side: 0.6 },
+      update(dt) {
+        if (this.shut) return true;       // a frame after the key, so the same E can't grab it straight back
+        const t = this.t, stand = _a.copy(D.pos).addScaledVector(D.dir, end * (DL + 0.52)), k = cl(t / 0.3);
+        p.x = U.lerp(p.x, stand.x, k); p.z = U.lerp(p.z, stand.z, k);
+        c.yaw = U.angleDamp(c.yaw, Math.atan2(-D.dir.x * end, -D.dir.z * end), 12, dt);
+        let v = 0;
+        if (S.ctl && t > 0.3) {           // camera-relative input along the track
+          const fx = Math.sin(S.cam.yaw), fz = Math.cos(S.cam.yaw), mx = Input.move.x, my = Input.move.y;
+          v = ((fx * my - fz * mx) * D.dir.x + (fz * my + fx * mx) * D.dir.z) * 0.95;
+          if (Input.pressed('interact') || Input.pressed('jump')) this.shut = true;
+        }
+        const s0 = D.s; D.s = cl(D.s + v * dt, 0, D.len); binPlace(D);
+        const moved = D.s - s0;
+        c.setMove(Math.abs(moved) > 1e-4 ? 0.9 : 0, { strafe: [0, -end * Math.sign(moved)] });
+        const bar = _b.copy(D.pos).addScaledVector(D.dir, end * (DL + 0.06)); bar.y += 0.95;
+        hands(c, bar.clone().addScaledVector(side, 0.24 * end), bar.clone().addScaledVector(side, -0.24 * end), sm(cl(t / 0.3)));
+        if (Math.abs(moved) > 1e-4 && (loud -= dt) <= 0) { loud = 0.8; Audio.sfx('metal_creak', { pos: D.pos, vol: 0.45 }); AI.noise(D.pos, 9, 'player'); }
+        if (D.s >= D.len - 0.02) {
+          D.docked = true; Audio.sfx('metal_hit', { pos: D.pos, vol: 0.6 });
+          if (D.onArrive) D.onArrive(Game.G);
+          return true;
+        }
+      },
+      end() { c.ikT = {}; },
+    });
+  }
+
+  // ---- generators ---------------------------------------------------------------------------------------------------
+  // pull-start: each E is one yank of the cord; it catches on the last pull (loud: it draws infected), then runs, and a
+  // running generator keeps drawing them to the spot
+  function generator(A, S, o) {
+    const yaw = o.yaw || 0, f = U.fwd(yaw, new V3()), cs = Math.cos(yaw), sn = Math.sin(yaw), [x, y = 0, z] = o.at;
+    const Gn = { A, kind: 'generator', at: A.w(o.at), f, need: o.pulls ?? 3, pulls: 0, started: false, onStart: o.onStart, t: 0, loop: null, hum: 0 };
+    Build.prop('generator', { pos: o.at, yaw });
+    Gn.smoke = Build.smoke({ pos: [x + 0.3 * cs + 0.2 * sn, y + 0.3, z - 0.3 * sn + 0.2 * cs], size: 0.25, color: 0x5a5a5a, rate: 0.35, count: 8 });
+    Gn.smoke.visible = false;
+    A.interactable({ at: [x + f.x * 0.7, y, z + f.z * 0.7], r: 1.2, once: false, prompt: 'e – pull the cord', cond: () => !Gn.started && !S.act, use: () => pullCord(S, Gn) });
+    items.push(Gn);
+    return Gn;
+  }
+  function pullCord(S, Gn) {
+    const c = S.c, f = Gn.f, r = new V3(f.z, 0, -f.x), last = Gn.pulls + 1 >= Gn.need;
+    const stand = Gn.at.clone().addScaledVector(f, 0.7), grip = Gn.at.clone().addScaledVector(f, 0.2).addScaledVector(r, 0.1).setY(Gn.at.y + 0.42);
+    const back = stand.clone().addScaledVector(f, 0.05).addScaledVector(r, 0.28).setY(stand.y + 1.2);
+    let snd = null;
+    S.start({
+      name: 'pull', root: true, fragile: true, A: Gn.A,
+      update(dt) {
+        const t = this.t, p = c.root.position;
+        p.x = U.lerp(p.x, stand.x, cl(t / 0.25)); p.z = U.lerp(p.z, stand.z, cl(t / 0.25));
+        c.yaw = U.angleDamp(c.yaw, U.yawTo(stand, Gn.at), 12, dt);
+        c.setMove(0, { crouch: t > 0.05 && t < 0.6 });
+        const T = c.ikT || (c.ikT = {});      // the right hand takes the handle low, then yanks it up and back past the hip
+        T.R = { p: grip.clone().lerp(back, sm(cl((t - 0.45) / 0.16))), w: sm(cl(t / 0.3)) * (1 - sm(cl((t - 0.85) / 0.2))) };
+        if (t > 0.5 && !snd) { snd = Audio.sfx('engine_start', { pos: Gn.at, vol: last ? 0.8 : 0.55 }); AI.noise(Gn.at, last ? 25 : 10, 'player'); }
+        if (t >= 1.05) return true;
+      },
+      end(done) {
+        c.ikT = {};
+        if (done) Gn.pulls++;
+        if (!done || !last) { if (snd) snd.stop(); return; }       // it coughs and dies
+        Gn.started = true; Gn.smoke.visible = true;
+        if (Gn.onStart) Gn.onStart(Game.G);
+      },
+    });
+  }
+  function generatorTick(Gn, dt) {
+    if (!Gn.started) return;
+    Gn.t += dt;
+    if (!Gn.loop && Gn.t > 2.7) Gn.loop = Audio.loop('engine_idle', { pos: Gn.at, vol: 0.45 });
+    if ((Gn.hum -= dt) <= 0) { Gn.hum = 3; AI.noise(Gn.at, 12, 'generator'); }
   }
 
   // ---- context detection --------------------------------------------------------------------------------------------
@@ -397,7 +513,7 @@ const Trav = (() => {
 
   // ---- frame -------------------------------------------------------------------------------------------------------
   function update(S, dt) {
-    for (const it of items) if (it.kind === 'pallet') palletTick(S, it, dt);
+    for (const it of items) if (it.kind === 'pallet') palletTick(S, it, dt); else if (it.kind === 'generator') generatorTick(it, dt);
     if (!S.ctl || S.act || !(S.p.combat || S.p.canJump) || S.aim || S.throwAim || S.p.carry) return;
     const x = context(S);
     if (!x) return;

@@ -3,7 +3,7 @@
 //   ?dev&test=play                 Chase (combat, HUD, a full kit) at the supply pad; Chloe follows
 //   ?dev&test=play&who=chloe       Chloe as the player (pistol, bow, box cutter, 60% health)
 //   &spot=NAME                     start somewhere else: start bench trav ladder plank portable squeeze boost water grass
-//                                  listen takedown range
+//                                  listen takedown range dumpster generator
 //   &enemies=0                     no enemies
 //   CONTENT.dev.playSpot(name)     teleport the player (and the companion) at runtime — for tools/shot.mjs eval steps
 // Layout (area-local; origin [-12000, 0, 0]; north = -Z, the player starts facing it):
@@ -11,6 +11,8 @@
 //   traversal lane x -12..-2: low wall (vault) · 1.5 m block (climb, drop) · 2.1 m wall (marked ledge) · ladder up a 4 m
 //     platform · plank carried across a 2.5 m gap · drop down · portable ladder to a 3 m roof · squeeze gap
 //   west: a 3.2 m wall (two-person boost) and a flooded tank (deep water; push the pallet across for Chloe)
+//   south: a dumpster to roll under a 3.3 m fire-escape wall (climb it, then the ledge); a garage whose shutter opens when
+//     its generator is pull-started
 //   east: tall grass, a dark shed, cover; Scrollers, a Clicker, a Lurker, a smuggler patrol and a guard facing away
 // ============================================================================
 (() => {
@@ -19,7 +21,7 @@
     ladder: [[-10.5, 0, -20.4], Math.PI], plank: [[-6.4, 4, -24.2], Math.PI], portable: [[-1, 0, -34.5], Math.PI],
     squeeze: [[-8, 0, -44.6], Math.PI], boost: [[-17, 0, -28.3], Math.PI], water: [[-21, 0, -4.2], Math.PI + 0.3],
     grass: [[14, 0, -18.5], Math.PI], listen: [[26, 0, -11.2], Math.PI + 0.15], takedown: [[8, 0, -11.9], Math.PI],
-    range: [[18, 0, -19.5], Math.PI + 0.2],
+    range: [[18, 0, -19.5], Math.PI + 0.2], dumpster: [[-15.9, 0, 14.65], -Math.PI / 2], generator: [[12.2, 0, 10.9], 0.2],
   };
   const asChloe = () => PARAMS.get('who') === 'chloe';
 
@@ -79,6 +81,18 @@
       // ---- west: boost wall ------------------------------------------------------------------------------------------------------
       Build.box(6, 3.2, 3, block, { pos: [-17, 0, -31.5] });
       A.boost({ at: [-17, 0, -29.3], top: [-17, 3.2, -30.8], partner: asChloe() ? 'chase' : 'chloe' });
+
+      // ---- south: fire escape (roll the dumpster against the wall, climb it, then the ledge) and the generator garage -------
+      Build.box(6, 3.3, 1.5, brick, { pos: [-26, 0, 16] });
+      A.dumpster({ at: [-17.5, 0, 14.65], to: [-24.6, 0, 14.65] });
+      A.ledge({ at: [-24.6, 1.18, 14.85], top: [-24.6, 3.3, 15.8] });
+      A.pickup({ at: [-26.5, 3.3, 16], item: 'bars', n: 3 });
+      Build.room({ x: 17, z: 15, w: 5, d: 4, h: 3, wall: Tex.mat('plaster', { color: 0x8a867e }), outside: brick, floor: conc, doors: [{ side: 'n', at: 0, w: 2.2, h: 2.3 }] });
+      const shutter = Build.box(2.2, 2.3, 0.06, Tex.mat('metal_painted', { color: 0x7a8288 }), { pos: [17, 0, 13], dynamic: true, solid: false });
+      const door = A.collider([15.9, 0, 12.9], [18.1, 2.3, 13.1]);
+      A.pickup({ at: [17, 0, 15.5], item: 'shotgun_ammo', n: 2 });
+      A.generator({ at: [12.5, 0, 12.4], yaw: Math.PI, onStart: () => { A.data.shutter = 0; World.removeBox(door); } });
+      A.update(dt => { if (A.data.shutter == null || A.data.shutter >= 1) return; A.data.shutter = Math.min(1, A.data.shutter + dt / 3); shutter.position.y = 2.2 * U.smooth(A.data.shutter); });
 
       // ---- east: stealth field -------------------------------------------------------------------------------------------------
       Build.grass({ box: [8, -30, 20, -20], count: 2600, height: 0.95, color: 0x7a8a4a });

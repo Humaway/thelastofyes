@@ -183,7 +183,7 @@
     Build.car('truck', { pos: [-7.5, 1.2, -9.5], rot: [0, 1.95, -PI / 2], wrecked: true, color: 0xd8d4c8 });
     Build.fire({ pos: [-4.4, 0.6, -9.2], size: 2.1, light: 3 });
     Build.smoke({ pos: [-4.8, 2.5, -9.4], size: 3.2, rate: 0.05, lit: 0.8 });
-    Build.car('sedan', { pos: [4.6, 0, -9.2], yaw: -2.45, wrecked: true, color: 0x1c2636, lights: true, beams: true, plate: PLATE });
+    Build.car('sedan', { pos: [4.6, 0, -9.2], yaw: -2.45, wrecked: true, color: 0x1c2636, lights: true, beams: true, plate: '729 LKE' });   // Luke's car
     D.hazard = [Build.glow({ pos: [5.9, 0.85, -7.4], color: 0xff9020, size: 0.7, dynamic: true }), Build.glow({ pos: [3.2, 0.85, -11.3], color: 0xff9020, size: 0.7, dynamic: true })];
     Build.scatter('glass', { box: [-2, -16, 7, -3], count: 160, seed: 2 });
     Build.scatter('debris', { box: [-8, -18, 8, 0], count: 60, seed: 3 });
@@ -498,19 +498,17 @@
   // P5 — the bridge checkpoint
   // =================================================================================================================
   // Marks (area-local). Chase walks in from the south and stops short of the soldier; he runs for the east (+x) railing,
-  // goes down at FALL; Bub lands at BUB, in the van's headlights. The long take: he crawls to her and sits (CRADLE, facing
-  // the van, lit by its lights) with her across his lap.
-  // In CY's frame: F = forward (toward the van), R = Chase's right. She lies across his lap with her head on his left; the
-  // camera ends low and in front of him, off his left shoulder, his face above hers; Luke comes round behind the camera and
-  // kneels just beside the lens, out of frame, so only his arm reaches in, onto Chase's shoulder.
+  // goes down at FALL; Bub lands at BUB, in the van's headlights. The long take: the camera starts low on the road north of
+  // her (CAM0); he crawls to her and sits back on his heels (CRADLE, facing the van, lit by its lights) with her across his
+  // lap, her head in the crook of his left arm; the camera pushes in to CAM1, a low two-shot of his face above hers. Its aim
+  // (mk_p7_look, moved every frame by the P5 updater) drifts from her, to their two faces, and once she is gone onto his.
+  // Luke comes up behind Chase, soft in the dark behind him, and his hand comes down into the frame onto Chase's shoulder.
   const CY = -0.4, F = [Math.sin(CY), Math.cos(CY)], R = [-Math.cos(CY), Math.sin(CY)];
   const at5 = (o, f, r) => [o[0] + F[0] * f + R[0] * r, o[1] + F[1] * f + R[1] * r];
   const BUB = [2.6, -15.2], CRADLE = at5(BUB, -0.3, -0.08), FALL = at5(CRADLE, -1.6, -0.2);
-  const CAM0 = at5(BUB, 3.4, -0.9), CAM1 = at5(CRADLE, 0.7, -0.75), FACE = at5(CRADLE, 0.1, -0.15), STARE = at5(CAM1, 0, 0.45);
-  const LD = (() => { const x = FACE[0] - CAM1[0], z = FACE[1] - CAM1[1], l = Math.hypot(x, z); return [x / l, z / l]; })();   // the lens axis
-  const lens = (d, r) => [CAM1[0] + LD[0] * d - LD[1] * r, CAM1[1] + LD[1] * d + LD[0] * r];   // d along it, r to frame right
-  const LUKE_END = lens(0.45, 0.45), SHOULDER = at5(CRADLE, 0.15, -0.2), LUKE_YAW = Math.atan2(SHOULDER[0] - LUKE_END[0], SHOULDER[1] - LUKE_END[1]) + 0.3;
-  const LUKE_PATH = [[2.6, -12.6], [4.3, -13.6], lens(0.05, 0.9)].map(([x, z]) => w5(x, 0, z));   // behind the camera, never in frame
+  const CAM0 = at5(BUB, 3.3, -0.55), CAM1 = at5(CRADLE, 1.2, -0.62), STARE = at5(CAM1, 0.2, 0.42);
+  const SHOULDER = at5(CRADLE, -0.15, 0.23), LUKE_END = at5(SHOULDER, -0.34, 0.14), LUKE_YAW = Math.atan2(SHOULDER[0] - LUKE_END[0], SHOULDER[1] - LUKE_END[1]);
+  const LUKE_PATH = [[-0.5, -15.0], [1.4, -16.7]].map(([x, z]) => w5(x, 0, z));   // wide of the frame, then in behind Chase
   const M5 = {
     mk_start: [[1, 0, -40], 0],
     mk_p7_chase0: [[0.9, 0, -23.5], 0], mk_p7_luke0: [[2.3, 0, -24.1], 0],
@@ -520,7 +518,7 @@
     mk_p7_soldier_b: [[-3.2, 0, 1.9], PI + 0.12],
     mk_p7_rail: [[6.2, 0, -18.4], 1.9], mk_p7_fall: [[FALL[0], 0, FALL[1]], CY], mk_p7_bub: [[BUB[0], 0, BUB[1]], CY - PI / 2],
     mk_p7_cradle: [[CRADLE[0], 0, CRADLE[1]], CY], mk_p7_luke_end: [[LUKE_END[0], 0, LUKE_END[1]], LUKE_YAW],
-    mk_p7_face: [[FACE[0], 0.62, FACE[1]], 0],   // his face above hers: where the long take ends
+    mk_p7_look: [[BUB[0], 0.3, BUB[1]], 0],   // the long take's aim (see above)
   };
 
   function checkpoint(A) {
@@ -620,9 +618,19 @@
       for (const k in M5) A.marker(k, M5[k][0], M5[k][1]);
       mergeStatics(A);
       D.loops = [Audio.loop('clicks_far', { pos: A.w([30, 6, 420]), vol: 1 }), Audio.loop('water_lap', { pos: A.w([8, -3, -14]), vol: 0.8 }), Audio.loop('siren_far', { pos: A.w([-200, 10, -500]), vol: 0.5 })];
-      // eyes in the long take (set by p7.cradle / p7.gone): re-applied every frame, after the cradle's own gaze
-      D.gaze = null;
-      A.update((dt, t) => { for (const g of D.hazard) g.visible = t % 1.1 < 0.55; if (D.gaze) for (const [c, at] of D.gaze) c.lookAt(at); });
+      // the long take (p7.down / p7.cradle / p7.gone set D.look and D.gaze): eyes re-applied every frame after the cradle's own
+      // gaze, and the camera's aim eased toward what the frame is about — her, their two faces, his face
+      D.gaze = null; D.look = null;
+      const aim = V(), her = V(), lk = A.markers.mk_p7_look.pos;
+      A.update((dt, t) => {
+        for (const g of D.hazard) g.visible = t % 1.1 < 0.55;
+        if (D.gaze) for (const [c, at] of D.gaze) c.lookAt(at);
+        if (!D.look) return;
+        const chase = Game.who('chase'), bub = Game.who('bub');
+        if (D.look === 'lying') bub.point('chest', aim).lerp(chase.point('eyes', her), 0.35);
+        else chase.point('eyes', aim).lerp(bub.point('eyes', her), D.look === 'held' ? 0.45 : 0.28);
+        lk.lerp(aim, D.lookSnap ? 1 : 1 - Math.exp(-0.7 * dt)); D.lookSnap = false;
+      });
     },
     unload(A) { for (const l of A.data.loops) l.stop(0.2); },
   };
@@ -655,7 +663,7 @@
         actions: [{ t: 0, do: 'call', hook: 'p7.prop', args: 'scanner' }, { t: 0.3, who: 'bub', do: 'lookAt', at: 'soldier.hand_r' }, { t: 0.6, who: 'bub', do: 'emote', name: 'afraid' },
           { t: 0.4, who: 'soldier', do: 'gesture', name: 'point', to: 'bub.eyes', hold: true }, { t: 2.4, do: 'call', hook: 'p7.scan' }],
         cues: [{ t: 1.2, sfx: 'scanner_beep', at: 'soldier.hand_r', vol: 0.5 }, { t: 2.4, sfx: 'scanner_beep', at: 'soldier.hand_r', vol: 0.9 }] },
-      { cam: { type: 'static', at: 'mk_p7_scrcam', look: 'mk_p7_scr', lens: 60 }, dur: 2.4, focus: 'mk_p7_scr' },
+      { cam: { type: 'static', at: 'mk_p7_scrcam', look: 'mk_p7_scr', lens: 100 }, dur: 2.4, focus: 'mk_p7_scr' },
       { cam: { type: 'static', at: { of: 'soldier', off: [-0.45, 1.52, 1.25] }, look: 'soldier.eyes', lens: 55, push: 0.04 }, hold: 0.6, focus: 'soldier',
         actions: [{ t: 0, who: 'soldier', do: 'gesture', name: null }],
         lines: [{ who: 'soldier', text: "She's tagged.", emote: 'tense', pause: 0.5, to: 'chase' }] },
@@ -673,8 +681,8 @@
       { cam: { type: 'close', who: 'luke', lens: 65, push: 0.05 }, hold: 0.1,
         actions: [{ t: 0.3, who: 'luke', do: 'lookAt', at: 'soldier' }],
         lines: [{ who: 'luke', text: "Mate. Mate, don't—", emote: 'afraid', pause: 0.2, to: 'soldier' }] },
-      // 4. Chase turns his body to shield her and runs for the railing. Two shots.
-      { cam: { type: 'static', at: w5(-0.9, 1.45, -12.6), look: w5(3.6, 0.9, -17.4), lens: 30, handheld: 1 }, dur: 3.0, focus: 'chase',
+      // 4. Chase turns his body to shield her and runs for the railing, across the frame, the Soldier at its edge. Two shots.
+      { cam: { type: 'static', at: w5(-2.6, 1.2, -21.5), look: w5(2.0, 1.0, -15.5), lens: 35, handheld: 1.2 }, dur: 3.0, focus: 'chase',
         actions: [{ t: 0, who: 'chase', do: 'turnTo', to: 2.4, dur: 0.35 }, { t: 0.25, who: 'chase', do: 'runTo', at: 'mk_p7_rail' }, { t: 0.4, who: 'luke', do: 'emote', name: 'shocked' },
           { t: 0.62, who: 'soldier', do: 'fire', at: 'chase.chest', sfx: 'rifle_shot' }, { t: 0.95, who: 'soldier', do: 'fire', at: 'chase.chest', sfx: 'rifle_shot' }, { t: 1.08, do: 'call', hook: 'p7.fall' },
           { t: 1.2, who: 'luke', do: 'runTo', at: 'mk_p7_back' }],
@@ -684,20 +692,21 @@
         actions: [{ t: 0, do: 'call', hook: 'p7.tackle' }, { t: 0, do: 'call', hook: 'p7.down' }, { t: 0.2, who: 'soldier', do: 'gesture', name: 'struggle', dur: 2.6 }, { t: 0.2, who: 'luke', do: 'gesture', name: 'struggle', dur: 2.6 },
           { t: 2.7, do: 'call', hook: 'p7.shot' }],
         cues: [{ t: 0, sfx: 'tackle', at: 'luke' }, { t: 0.25, sfx: 'body_fall', at: 'soldier' }, { t: 1.2, sfx: 'metal_hit', at: 'soldier', vol: 0.5 }, { t: 2.7, sfx: 'rifle_shot', at: 'soldier', vol: 1.1 }, { t: 2.7, shake: 0.35, dur: 0.3 }] },
-      // Luke stands frozen over the body
-      { cam: { type: 'static', at: w5(-4.6, 1.5, -20.8), look: w5(0.7, 0.8, -14.6), lens: 32 }, dur: 5.2, focus: 'luke',
+      // Luke stands frozen over the body: low, past the dead man's head, the lights behind the lens on his face
+      { cam: { type: 'static', at: { of: 'luke', off: [0.3, 0.38, 1.75] }, look: 'luke.chest', lens: 35 }, dur: 5.2, focus: 'luke',
         actions: [{ t: 0.4, do: 'call', hook: 'p7.stand' }, { t: 1.4, who: 'soldier_b', do: 'pose', name: 'stand' }, { t: 2.2, who: 'soldier_b', do: 'walkTo', at: w5(-3.4, 0, 4.4), speed: 0.5 },
           { t: 4.1, who: 'luke', do: 'drop', hand: 'r' }],
         cues: [{ t: 4.45, sfx: 'metal_hit', at: 'luke', vol: 0.4 }] },
-      // 5–7. One continuous take. Low on the wet road. He crawls to her in the headlights and pulls her into his lap.
-      { longTake: true, dur: 85,
-        cam: { type: 'dolly', from: w5(CAM0[0], 0.32, CAM0[1]), to: w5(CAM1[0], 0.6, CAM1[1]), look: 'bub.chest', lookTo: 'mk_p7_face', lens: 42, dur: 72, ease: 'inOut' },
+      // 5–7. One continuous take. Low on the wet road, in the headlights: he crawls to her and pulls her into his lap; the
+      //      camera pushes in for the whole of it, from the road to his face above hers.
+      { longTake: true, dur: 85, focus: 'mk_p7_look',
+        cam: { type: 'dolly', from: w5(CAM0[0], 0.52, CAM0[1]), to: w5(CAM1[0], 0.84, CAM1[1]), look: 'mk_p7_look', lens: 45, dur: 85, ease: 'inOut' },
         actions: [
-          { t: 2.6, who: 'chase', do: 'pose', name: 'crawl' }, { t: 3.4, who: 'chase', do: 'walkTo', at: 'mk_p7_cradle', speed: 0.33 },
+          { t: 2.4, who: 'chase', do: 'pose', name: 'crawl', dur: 1.4 }, { t: 3.6, who: 'chase', do: 'walkTo', at: 'mk_p7_cradle', speed: 0.33 },
           { t: 9.0, do: 'call', hook: 'p7.cradle' },
           { t: 53.5, do: 'call', hook: 'p7.gone' }, { t: 55.5, who: 'bub', do: 'gesture', name: 'drop_hand' },
-          { t: 57.5, who: 'luke', do: 'walkTo', path: [...LUKE_PATH, 'mk_p7_luke_end'], speed: 0.95, yaw: LUKE_YAW }, { t: 68, who: 'luke', do: 'pose', name: 'kneel_one' },
-          { t: 77.6, who: 'luke', do: 'gesture', name: 'hand_on_shoulder', to: 'chase', hold: true }],
+          { t: 70.4, who: 'luke', do: 'walkTo', path: [...LUKE_PATH, 'mk_p7_luke_end'], speed: 0.85, yaw: LUKE_YAW },
+          { t: 78.3, who: 'luke', do: 'gesture', name: 'hand_on_shoulder', to: 'chase', hold: true }],
         lines: [
           { who: 'bub', text: 'Dad…', emote: 'afraid', t: 12.5, dur: 2.4, to: 'chase' },
           { who: 'chase', text: "Hey. Hey. Bub. Look at me. You're alright. Look at me.", emote: 'tender', pause: 1.6, dur: 5.4, to: 'bub' },
@@ -728,29 +737,28 @@
     if (what === 'radio') { c.hold('radio', 'r'); c.pose('phone_ear', { dur: 0.4 }); }
     if (what === 'scanner') { D.scanner = c.hold('scanner', 'r'); c.pose('stand', { dur: 0.3 }); }
   };
-  H['p7.scan'] = () => {   // the number comes up; the insert's camera looks square at the screen from the Soldier's side
+  H['p7.scan'] = G => {   // the number comes up; the insert looks straight down onto the screen on top of the scanner
     const A = S5(), D = A && A.data; if (!D || !D.scanner) return;
     let scr = null; D.scanner.traverse(o => { if (o.isMesh && o.material.map) scr = o; });
-    if (!scr) return D.scanner.userData.setText('BADGE: 14', true);
     const cv = scr.material.map.image, g = cv.getContext('2d');   // drawn here so all nine characters fit the screen
     g.fillStyle = '#3a0606'; g.fillRect(0, 0, cv.width, cv.height); g.fillStyle = '#ff5040'; g.font = 'bold 21px monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText('BADGE: 14', cv.width / 2, cv.height / 2 + 2); scr.material.map.needsUpdate = true;
-    const q = scr.getWorldQuaternion(new THREE.Quaternion()), p = scr.getWorldPosition(V()), cam = p.clone().addScaledVector(V(0, 0, 1).applyQuaternion(q), 0.13);
-    // roll the screen in its bezel so the text reads level from the camera (the director's cameras never roll)
-    const f = p.clone().sub(cam).normalize(), right = f.clone().cross(V(0, 1, 0)).normalize(), up = right.clone().cross(f), x = V(1, 0, 0).applyQuaternion(q);
-    scr.rotateZ(-Math.atan2(x.dot(up), x.dot(right))); scr.position.y += 0.011;   // (lifted clear of the casing once turned)
+    scr.position.y += 0.02; scr.scale.setScalar(1.5);              // a touch bigger, clear of the casing once it tilts back
+    const p = scr.getWorldPosition(V()), up = D.scanner.localToWorld(V(0, 1, 0)).sub(D.scanner.getWorldPosition(V())), cam = up.multiplyScalar(0.32).add(p);
+    scr.lookAt(cam);                                                // square to the lens, the text level
     A.marker('mk_p7_scr', p.sub(A.origin).toArray()); A.marker('mk_p7_scrcam', cam.sub(A.origin).toArray());
   };
   H['p7.fall'] = G => {   // hit: he goes down hard and she goes out of his arms
     const chase = G.who('chase'), bub = G.who('bub');
     chase.detach(); chase.stop(); bub.stop();
-    bub.pose('lie', { direct: true, dur: 0.3 }); bub.emote('shocked'); bub.lookAt(null);
+    bub.pose('dead', { direct: true, dur: 0.3 }); bub.emote('shocked'); bub.lookAt(null);
     chase.pose('struggle_down', { direct: true, dur: 0.28 }); chase.emote('shocked');
   };
   H['p7.down'] = G => {   // (off camera) where they lie for the long take: she in the headlights, he a body length away
-    const chase = G.who('chase'), bub = G.who('bub');
-    G.place(bub, 'mk_p7_bub'); bub.pose('lie', { direct: true, dur: 0.05 });
+    const chase = G.who('chase'), bub = G.who('bub'), D = S5().data;
+    G.place(bub, 'mk_p7_bub'); bub.pose('dead', { direct: true, dur: 0.05 }); bub.emote('exhausted');
     G.place(chase, 'mk_p7_fall'); chase.pose('struggle_down', { direct: true, dur: 0.05 }); chase.emote('exhausted'); chase.lookAt(bub);
+    D.look = 'lying'; D.lookSnap = true;
   };
   H['p7.tackle'] = G => {
     const luke = G.who('luke'), s = G.who('soldier');
@@ -764,11 +772,12 @@
     luke.hold(D.rifle, 'r'); luke.pose('stand', { dur: 1.4 }); luke.emote('shocked'); luke.lookAt(s.point('chest'));
     if (s.poseName !== 'dead') s.pose('dead', { direct: true, dur: 0.2 });
   };
-  // while she talks he looks down the length of her (his face stays open to the camera); she looks up at him. After, she
-  // stares at nothing above him and he at nothing just past the lens.
+  // while she talks he looks down the length of her (his face stays open to the camera); she looks up at him. After, her
+  // eyes rest on nothing just above his head and his on nothing just past the lens.
   const gaze = (chase, bub, gone) => {
     const a = V(), b = V();
-    S5().data.gaze = gone ? [[chase, V(...w5(STARE[0], 1.2, STARE[1]))], [bub, bub.point('head', b).add(V(0.4, 3, 0.8))]] : [[chase, () => bub.point('hips', a)], [bub, () => chase.point('eyes', b)]];
+    const D = S5().data; D.look = gone ? 'gone' : 'held';
+    D.gaze = gone ? [[chase, V(...w5(STARE[0], 0.95, STARE[1]))], [bub, chase.point('head', b).add(V(0, 0.45, 0))]] : [[chase, () => bub.point('hips', a)], [bub, () => chase.point('eyes', b)]];
   };
   H['p7.cradle'] = G => {
     const chase = G.who('chase'), bub = G.who('bub');
@@ -783,8 +792,8 @@
   H['p7.end'] = G => {   // the end state (also on skip): she is gone, in his lap; Luke's hand on his shoulder
     const chase = G.who('chase'), bub = G.who('bub'), luke = G.who('luke'), s = G.who('soldier');
     if (s && s.poseName !== 'dead') s.pose('dead', { direct: true, dur: 0.2 });
-    G.place(chase, 'mk_p7_cradle'); chase.attach(bub, 'cradle', { grip: false }); chase.emote('crying'); bub.emote('exhausted'); gaze(chase, bub, true);
-    if (luke.pair) luke.detach(); G.place(luke, 'mk_p7_luke_end'); luke.pose('kneel_one', { direct: true, dur: 0.2 });
+    G.place(chase, 'mk_p7_cradle'); chase.attach(bub, 'cradle', { grip: false }); chase.emote('crying'); bub.emote('exhausted'); gaze(chase, bub, true); S5().data.lookSnap = true;
+    if (luke.pair) luke.detach(); G.place(luke, 'mk_p7_luke_end'); luke.pose('stand', { direct: true, dur: 0.2 });
     H['p7.silence'](G); Audio.amb(null, 0.05);
   };
 

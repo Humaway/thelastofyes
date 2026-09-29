@@ -40,8 +40,8 @@
 //        'killed' also when the grabber dies during the struggle (companion rescue).
 //   Play.listening (Airplane Mode held: desaturate, Audio.muffle, silhouettes of AI.listenTargets through walls via
 //        Engine.overlay within 20 m (+5 m per skill level), slow move, HUD label)
-//   Play.busy -> action name | null   (vault, climb, drop, ladder, squeeze, carry, boost, takedown, grab, heal, backpack,
-//        bench, death)
+//   Play.busy -> action name | null   (vault, climb, drop, ladder, squeeze, carry, boost, drag, pull, takedown, grab, heal,
+//        backpack, bench, death)
 //   Play.speed, Play.profile, Play.camYaw (get/set)
 //   Play.extendArea(A) adds (area-local coordinates):
 //     A.pickup({at, item, n=1, prompt}) -> it    glinting pickup, "e – pick up"; n scales with difficulty (Story ×2, Hard ×½)
@@ -62,6 +62,11 @@
 //        player pushes through deep water by walking into it; a rider (Chloe) stands on it; it docks at `to`
 //     A.boost({at, top, partner='chloe'})   two-person ledge (up to 3.4 m): space – boost; the lighter one goes up first and
 //        pulls the other up (the partner's AI agent is set to 'scripted' for the duration)
+//     A.dumpster({at, to, onArrive(G)}) -> {s, pos, docked}   a bin on castors (lid 1.18 m, walkable and climbable) that
+//        rolls along the straight track at → to, long side along it: e – grab an end, then push or pull it (loud); it docks
+//        at `to` (e.g. under a fire escape: climb it, then an A.ledge up to 2.2 m)
+//     A.generator({at, yaw, pulls=3, onStart(G)}) -> {started}   pull-start generator: each e is one yank of the cord (noise
+//        10 m); it catches on the last (noise 25 m), runs, smokes and keeps drawing infected to the spot (12 m every 3 s)
 //     A.hint(points)   hold T turns the camera toward the next point along the list
 //     A.water({box:[x1,z1,x2,z2], y=0, deep})   shallow water slows; deep water swims (no weapons). Chloe can't swim.
 //     A.dark(box [x1,z1,x2,z2], amount=0.6) · A.tallGrass(box)   stealth zones for Play.visibility (def.dark = area base)
@@ -292,7 +297,7 @@ const Play = (() => {
     const dist = o.dist ?? (aiming ? 1.4 : S.crouch ? 2.0 : 2.2 + C.open * 0.65 + (S.speed > 4 ? 0.3 : 0));
     C.dist = U.damp(C.dist, dist, aiming || o.dist ? 9 : 3, dt);
     C.sideK = U.damp(C.sideK, C.side, 7, dt);
-    const side = (o.side ?? (aiming ? 0.55 : 0.45)) * C.sideK;
+    const side = (o.side ?? (aiming ? 0.66 : 0.45)) * C.sideK;
     C.h = U.damp(C.h, (o.h ?? (S.crouch ? 1.12 : 1.55)) * sc, 6, dt);
     C.fov = U.damp(C.fov, (o.fov ?? baseFov() * (aiming ? 0.87 : 1)) + (S.speed > 4 ? 3 : 0), 6, dt);
     if (o.yaw != null) C.yaw = U.angleDamp(C.yaw, o.yaw, 3, dt);

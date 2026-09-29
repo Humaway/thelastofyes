@@ -139,7 +139,7 @@ const Kit = (() => {
   function paper(g, w, d, col) { part(g, B(w, 0.003, d), mat(col, { rough: 0.95 }), [0, 0.002, 0], [0, 0.2, 0]); }
   function collectible(A, S, o) {
     const entry = (o.kind === 'tip' ? CONTENT.tips : CONTENT.collectibles[o.kind + 's']).find(e => e.id === o.id);
-    if (o.kind === 'tip') return A.interactable({ at: o.at, r: 1.6, prompt: 'e – joke', cond: () => !S.act, use: () => joke(entry) });
+    if (o.kind === 'tip') return A.interactable({ at: o.at, r: 1.6, prompt: 'e – joke', cond: () => !S.act, use: () => speak(entry.lines) });
     if (Save.data.collectibles[o.kind + 's'].includes(o.id)) return null;
     const g = new THREE.Group();
     if (o.kind === 'artifact') paper(g, 0.21, 0.28, 0xe8e2d2);
@@ -157,14 +157,18 @@ const Kit = (() => {
     pickups.push(P);
     return P;
   }
-  function joke(entry) {
-    (async () => { for (const l of entry.lines) await Dialogue.say(l.who, l.text, { emote: l.emote }); })().catch(e => { if (e !== Game.ABORT) console.error(e); });
+  function speak(lines) {
+    (async () => { for (const l of lines) await Dialogue.say(l.who, l.text, { emote: l.emote }); })().catch(e => { if (e !== Game.ABORT) console.error(e); });
   }
   function found(S, o, entry) {
     Audio.sfx(o.kind === 'lanyard' ? 'pickup' : 'page_turn', { pos: S.c.root.position });
     Save.collect(o.kind + 's', o.id);
     if (o.kind === 'artifact') read(S, entry);
-    else if (o.kind === 'lanyard') UI.toast(entry.title, 'lost lanyard');
+    else if (o.kind === 'lanyard') {
+      UI.toast(entry.title, 'lost lanyard');
+      const ch = Game.who('chloe');         // she has a word for the trainees
+      if (/Trainee/.test(entry.title) && ch && ch !== S.c && ch.root.position.distanceTo(S.c.root.position) < 15) speak([{ who: 'chloe', text: 'Another trainee.', emote: 'sad' }]);
+    }
     else {
       const n = Save.data.collectibles.modules.length, sk = CONTENT.skills[(n - 1) % 6];
       UI.toast(`sales training module ${n} of 12`, sk.name.toLowerCase());
@@ -239,45 +243,59 @@ const Kit = (() => {
 
   // ---- workbench ----------------------------------------------------------------------------------------------------------
   function workbench(A, S, o) {
-    const yaw = o.yaw || 0, f = U.fwd(yaw, new V3());
+    const yaw = o.yaw || 0, f = U.fwd(yaw, new V3()), r = new V3(f.z, 0, -f.x);     // r: the user's right
     Build.prop('table', { kind: 'workbench', pos: o.at, yaw });
-    const at = A.w(o.at), W = { A, at, yaw, f, stand: at.clone().addScaledVector(f, 0.72) };
+    const at = A.w(o.at), top = at.clone().setY(at.y + 0.9);
+    const W = { A, top, yaw, f, r, stand: at.clone().addScaledVector(f, 0.62), gun: top.clone().addScaledVector(f, 0.06).setY(top.y + 0.008) };
+    // dressing: a cleaning mat the gun is laid on, a hammer and a roll of tape
+    const lay = (m, p, ry) => { m.position.copy(p).sub(A.origin); m.rotation.y = yaw + ry; A.group.add(m); };
+    lay(new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.008, 0.3), mat(0x39443c, { rough: 1 })), W.gun.clone().setY(top.y), 0.06);
+    lay(mesh('hammer'), top.clone().addScaledVector(r, -0.42).addScaledVector(f, 0.1), 0.5);
+    lay(mesh('tape'), top.clone().addScaledVector(r, 0.45).addScaledVector(f, -0.15), 0);
     A.interactable({ at: [o.at[0] + f.x * 0.75, o.at[1] || 0, o.at[2] + f.z * 0.75], r: 1.3, once: false, prompt: 'e – use workbench', cond: () => !S.act && S.p.combat, use: () => bench(S, W) });
     return W;
   }
+  // Chase lifts the gun off the mat and turns it over in his hands while upgrades are chosen; fitting one rattles it
   function bench(S, W) {
-    const c = S.c, inv = S.inv, f = W.f, rx = -f.z, rz = f.x;
+    const c = S.c, inv = S.inv, f = W.f, r = W.r;
     const guns = () => inv.weapons.filter(w => CONTENT.upgrades[w]);
     let gi = Math.max(0, guns().indexOf(inv.weapon)), row = 0, tinker = 0, gunMesh = null, shown = null;
-    const top = W.at.clone(); top.y += 0.9;
-    const p0 = c.root.position.clone(), yaw0 = c.yaw;
-    // close-up from over Chase's right side, looking down at the gun on the bench (the upgrade list sits screen-left)
-    const camPos = top.clone().addScaledVector(f, 0.62).addScaledVector(new V3(rx, 0, rz), -1.1); camPos.y += 0.85;
-    const camTgt = top.clone().addScaledVector(f, 0.05).addScaledVector(new V3(rx, 0, rz), 0.22);
-    Audio.sfx('metal_hit', { pos: top, vol: 0.3 });
+    const p0 = c.root.position.clone(), yaw0 = c.yaw, gp = new V3();
+    const held = W.stand.clone().addScaledVector(f, -0.34); held.y = W.top.y + 0.24;      // on his palms, over the bench edge
+    // from his left, above the bench: he and the gun sit screen-right, the upgrade list over the backboard screen-left
+    const camPos = held.clone().addScaledVector(f, -0.5).addScaledVector(r, -1); camPos.y = held.y + 0.45;
+    const camTgt = held.clone().addScaledVector(f, -0.21).addScaledVector(r, 0.11); camTgt.y += 0.2;
+    Audio.sfx('metal_hit', { pos: W.top, vol: 0.3 });
+    c.lookAt(gp);
     const state = () => {
       const gs = guns(), w = gs[gi], bars = inv.items.bars || 0, have = inv.upgrades[w] || [];
       return { guns: gs.map(g => name(g)), gi, row, bars, list: w ? CONTENT.upgrades[w].map(u => ({ name: u.name, text: u.text, cost: u.cost, owned: have.includes(u.id), can: !have.includes(u.id) && bars >= u.cost })) : [] };
     };
     S.start({
       name: 'bench', root: true, cam: { lockLook: true },
-      pose(cp, dt) { const k = U.smooth(U.clamp(this.t / 0.8)); cp.pos.lerp(camPos, k); cp.target.lerp(camTgt, k); cp.fov = U.lerp(cp.fov, 46, k); },
+      pose(cp, dt) { const k = U.smooth(U.clamp(this.t / 0.9)); cp.pos.lerp(camPos, k); cp.target.lerp(camTgt, k); cp.fov = U.lerp(cp.fov, 45, k); },
       update(dt) {
-        const k = U.smooth(U.clamp(this.t / 0.5)), p = c.root.position;
+        const t = this.t, k = U.smooth(U.clamp(t / 0.5)), p = c.root.position;
         p.x = U.lerp(p0.x, W.stand.x, k); p.z = U.lerp(p0.z, W.stand.z, k);
         c.yaw = yaw0 + U.wrapAngle(W.yaw + Math.PI - yaw0) * k;
         c.setMove(k < 1 ? 1 : 0);
         const gs = guns(), w = gs[gi];
-        if (w !== shown) {        // the gun lies on the bench while Chase works on it
+        if (w !== shown) {
           if (gunMesh) W.A.group.remove(gunMesh);
           shown = w; gunMesh = w ? mesh(w) : null;
-          if (gunMesh) { gunMesh.position.copy(top).sub(W.A.origin); gunMesh.rotation.y = W.yaw + Math.PI / 2; W.A.group.add(gunMesh); }
+          if (gunMesh) W.A.group.add(gunMesh);
         }
         tinker = Math.max(0, tinker - dt);
-        const s = Math.sin(this.t * (tinker > 0 ? 16 : 3)) * (tinker > 0 ? 0.03 : 0.012);
-        const T = c.ikT || (c.ikT = {});
-        T.L = { p: top.clone().add(new V3(rx * 0.07 + f.x * 0.05, 0.04 + s, rz * 0.07 + f.z * 0.05)), w: k };     // steadies the gun
-        T.R = { p: top.clone().add(new V3(-rx * 0.06 + f.x * 0.09, 0.06 - s, -rz * 0.06 + f.z * 0.09)), w: k };   // works on it
+        const lift = U.smooth(U.clamp((t - 0.45) / 0.5)), j = tinker * tinker;
+        gp.lerpVectors(W.gun, held, lift); gp.y += lift * Math.sin(t * 1.4) * 0.008;
+        if (gunMesh) {
+          gunMesh.position.copy(gp).sub(W.A.origin); gunMesh.position.y += Math.abs(Math.sin(t * 31)) * 0.006 * j;
+          gunMesh.rotation.set(0, W.yaw - Math.PI / 2 + 0.12 + lift * (0.3 + Math.sin(t * 0.9) * 0.12), Math.sin(t * 23) * 0.05 * j);
+        }
+        // the wrists sit just short of the gun so it rests across both palms
+        const reach = U.smooth(U.clamp((t - 0.15) / 0.3)), T = c.ikT || (c.ikT = {}), q = Math.sin(t * (tinker > 0 ? 16 : 2)) * (tinker > 0 ? 0.02 : 0.006);
+        T.L = { p: gp.clone().addScaledVector(r, -0.08).addScaledVector(f, 0.08).setY(gp.y - 0.03), w: reach };
+        T.R = { p: gp.clone().addScaledVector(r, 0.08 + q).addScaledVector(f, 0.08).setY(gp.y - 0.03 + q), w: reach };
         if (this.t < 0.6 || !S.ctl) { UI.workbench(state()); return; }
         if (Input.pressed('backpack') || Input.pressed('back')) return true;
         const L = w ? CONTENT.upgrades[w].length : 0;
@@ -288,14 +306,14 @@ const Kit = (() => {
         if (L && (Input.pressed('interact') || Input.pressed('confirm'))) {
           const u = CONTENT.upgrades[w][row], have = inv.upgrades[w] || (inv.upgrades[w] = []);
           if (!have.includes(u.id) && (inv.items.bars || 0) >= u.cost) {
-            inv.items.bars -= u.cost; have.push(u.id); tinker = 1.2;
+            inv.items.bars -= u.cost; have.push(u.id); tinker = 1;
             if (u.id === 'cap') inv.clip[w] = Math.min(inv.clip[w] || 0, Arms.cap(S, w));
-            Audio.sfx('craft', { pos: top }); Audio.sfx('metal_hit', { pos: top, vol: 0.5 });
+            Audio.sfx('craft', { pos: W.top }); Audio.sfx('metal_hit', { pos: W.top, vol: 0.5 });
           } else Audio.sfx('dry_fire', { vol: 0.4 });
         }
         UI.workbench(state());
       },
-      end() { c.ikT = {}; if (gunMesh) W.A.group.remove(gunMesh); UI.workbench(null); },
+      end() { c.lookAt(null); c.ikT = {}; if (gunMesh) W.A.group.remove(gunMesh); UI.workbench(null); },
     });
   }
 

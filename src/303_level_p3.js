@@ -1,7 +1,7 @@
 // ============================================================================
 // Area P3 — Redcliffe streets by car — and the beat prologue.P5 "The Drive" (spec §8 P.5). Owned by: level agent (drive).
-// The player is Bub in the back seat behind Luke (right-hand drive; Chase in the front passenger seat, twisted round to
-// watch her). Camera only: Play.lookMode from her eye point in a car that follows a ~1.1 km spline at 35–45 km/h (~2 min):
+// The player is Bub in the back seat, just right of the middle, behind and beside Luke (right-hand drive; Chase in the
+// front passenger seat, twisted round to watch her). Camera only: Play.lookMode from her eye point in a car that follows a ~1.1 km spline at 35–45 km/h (~2 min):
 // the esplanade along the bay (palms, heritage lamps, people standing in the road, a jogger stopped mid-stride, the jetty
 // lined with blue faces), the shops, the suburbs (a family frozen on a porch, a dog barking at its owner, a stopped bus
 // of blue faces, police lights and sirens far off, an INFINITE billboard), a servo, and the roundabout where a truck runs
@@ -30,8 +30,8 @@
   const LANE = 1.75, ROAD = 5, SPACING = 27;
   const X_STREETS = [[522, -1, 'MARINE PDE'], [664, 1, 'SUTTONS AVE'], [812, -1, 'ANZAC AVE']];
   // car-local frame: +Z forward, +X = the car's LEFT (passenger side), cabin floor at y 0.28
-  const SEATS = { luke: { at: [-0.38, 0.2, 0.34], yaw: 0, pose: 'drive' }, chase: { at: [0.3, 0.2, 0.38], yaw: -0.95, pose: 'sit_car' }, bub: { at: [-0.37, 0.3, -0.74], yaw: 0, pose: 'sit_car' } };
-  const EYE = [-0.37, 1.25, -0.72], WHEEL = [-0.38, 0.87, 0.8], RADIO = [0, 0.8, 1.02], WINDOW = [-0.772, 1.13, -0.6];
+  const SEATS = { luke: { at: [-0.38, 0.2, 0.34], yaw: 0, pose: 'drive' }, chase: { at: [0.3, 0.2, 0.38], yaw: 0, pose: 'sit_car_turn' }, bub: { at: [-0.2, 0.3, -0.74], yaw: 0, pose: 'sit_car' } };
+  const EYE = [-0.2, 1.25, -0.72], WHEEL = [-0.38, 0.87, 0.8], RADIO = [0, 0.8, 1.02], WINDOW = [-0.772, 1.13, -0.6];
 
   // ---- route sampling ------------------------------------------------------------------------------------------------
   let R = null;
@@ -139,7 +139,7 @@
     const B = batcher(), C = Tex.color;
     const paint = C(0x1c2636, { rough: 0.22, metal: 0.65 }), trim = C(0x151517, { rough: 0.7 }), plastic = C(0x26272a, { rough: 0.6 });
     const seat = Tex.mat('fabric', { color: 0x4c4e55, scale: 0.6 }), seat2 = C(0x34363b, { rough: 0.9 }), carpet = Tex.mat('carpet', { color: 0x252527 });
-    const lining = C(0xa39e92, { rough: 0.95 }), pillar = C(0x55524c, { rough: 0.95 }), chrome = C(0x9a9ea2, { rough: 0.45, metal: 0.8 });
+    const lining = Tex.mat('plaster', { color: 0x6a655c }), pillar = C(0x48453f, { rough: 0.95 }), chrome = C(0x9a9ea2, { rough: 0.45, metal: 0.8 });
     // floor, tunnel; the outside we can see from in here: bonnet, cowl and wipers, boot, door tops, mirrors
     B.box(carpet, 1.5, 0.04, 2.9, 0, 0.26, -0.15); B.rbox(carpet, 0.26, 0.14, 2.4, 0.05, 0, 0.3, -0.1);
     B.rbox(paint, 1.72, 0.08, 1.32, 0.03, 0, 0.9, 1.84, 0.085); B.box(paint, 1.7, 0.4, 0.2, 0, 0.72, 2.46); B.box(trim, 1.62, 0.06, 0.26, 0, 0.955, 1.2);
@@ -155,24 +155,30 @@
     for (const [x, z] of [[-0.08, 0.95], [0.08, 0.95], [0.55, 0.99], [-0.64, 0.99]]) for (let i = 0; i < 4; i++) B.box(trim, 0.11, 0.008, 0.02, x, 0.85 + i * 0.018, z);
     B.rbox(trim, 0.22, 0.34, 0.66, 0.04, 0, 0.44, 0.58); B.rbox(plastic, 0.2, 0.08, 0.3, 0.03, 0, 0.62, 0.16); B.cyl(chrome, 0.012, 0.012, 0.16, 0, 0.66, 0.74, -0.25); B.cyl(trim, 0.03, 0.025, 0.05, 0, 0.75, 0.76);
     B.cyl(C(0xf2efe8, { rough: 0.6 }), 0.035, 0.03, 0.12, 0.06, 0.66, 0.44, 0, 0, 0, 12); B.cyl(C(0x4a2a1a, { rough: 0.8 }), 0.036, 0.036, 0.012, 0.06, 0.725, 0.44, 0, 0, 0, 12);
-    // doors (inner cards), sills, armrests, speakers, pillars, visors, headliner, parcel shelf with a tissue box
+    // doors (inner cards), sills, armrests, speakers, pillars, visors, grab handles, the roof and its lining (bowed, trimmed
+    // down to the glass along both sides), dome light, parcel shelf with a tissue box
     for (const s of [-1, 1]) {
       B.box(plastic, 0.05, 0.68, 2.55, s * 0.78, 0.62, -0.2); B.rbox(trim, 0.1, 0.035, 2.55, 0.015, s * 0.745, 0.955, -0.2);
       for (const z of [0.3, -0.62]) { B.rbox(seat2, 0.09, 0.07, 0.44, 0.03, s * 0.72, 0.66, z); B.box(chrome, 0.012, 0.03, 0.08, s * 0.748, 0.82, z + 0.2); B.cyl(trim, 0.075, 0.075, 0.012, s * 0.752, 0.44, z + 0.08, 0, 0, PI / 2, 16); }
       B.strut(pillar, V(s * 0.72, 0.96, 1.16), V(s * 0.64, 1.42, 0.4), 0.1, 0.06);
       B.rbox(pillar, 0.07, 0.5, 0.14, 0.02, s * 0.73, 1.18, -0.3);
       B.strut(pillar, V(s * 0.72, 0.97, -1.2), V(s * 0.63, 1.42, -0.84), 0.28, 0.06);
-      B.rbox(lining, 0.26, 0.025, 0.4, 0.01, s * 0.38, 1.395, 0.64, 0.12);
+      B.rbox(lining, 0.3, 0.022, 0.19, 0.008, s * 0.37, 1.405, 0.33, 0.1);
+      B.box(pillar, 0.08, 0.07, 1.42, s * 0.735, 1.415, -0.25); B.rbox(pillar, 0.03, 0.025, 0.16, 0.008, s * 0.7, 1.37, -0.62);
     }
-    B.box(lining, 1.38, 0.03, 1.46, 0, 1.42, -0.26); B.rbox(plastic, 0.22, 0.04, 0.12, 0.015, 0, 1.4, 0.22);
+    B.rbox(paint, 1.6, 0.05, 1.5, 0.02, 0, 1.475, -0.26);
+    const roof = new THREE.PlaneGeometry(1.44, 1.46, 12, 2).rotateX(PI / 2), rp = roof.attributes.position;
+    for (let i = 0; i < rp.count; i++) rp.setY(i, -0.045 * (rp.getX(i) / 0.72) ** 2);
+    roof.computeVertexNormals(); B.add(roof, lining, 0, 1.447, -0.26);
+    B.rbox(plastic, 0.17, 0.02, 0.09, 0.008, 0, 1.44, -0.32); B.box(C(0x3a3834, { rough: 0.3 }), 0.12, 0.004, 0.05, 0, 1.43, -0.32);
     B.box(C(0x222224, { rough: 0.9 }), 1.36, 0.03, 0.5, 0, 0.99, -1.42); B.rbox(C(0xd8d4cc, { rough: 0.8 }), 0.24, 0.1, 0.12, 0.02, 0.45, 1.05, -1.47);
-    // rear-view mirror
-    B.box(trim, 0.02, 0.08, 0.02, 0, 1.36, 0.97); B.rbox(plastic, 0.26, 0.075, 0.04, 0.015, 0, 1.3, 0.96); B.box(C(0x0c1016, { rough: 0.04, metal: 1 }), 0.23, 0.055, 0.004, 0, 1.3, 0.938);
+    // rear-view mirror, hung from the top of the windscreen
+    B.box(trim, 0.02, 0.07, 0.02, 0, 1.4, 0.46); B.rbox(plastic, 0.26, 0.075, 0.04, 0.015, 0, 1.34, 0.46); B.box(C(0x0c1016, { rough: 0.04, metal: 1 }), 0.23, 0.055, 0.004, 0, 1.34, 0.438);
     // seats: two front buckets (their backs face Bub), the rear bench
     for (const s of [-1, 1]) {
       B.rbox(seat, 0.5, 0.14, 0.52, 0.05, s * 0.38, 0.43, 0.38, 0.06); B.rbox(seat, 0.5, 0.62, 0.14, 0.06, s * 0.38, 0.86, 0.05, -0.16);
-      B.rbox(seat2, 0.4, 0.34, 0.02, 0.01, s * 0.38, 0.72, -0.03, -0.16); B.rbox(seat, 0.25, 0.18, 0.1, 0.045, s * 0.38, 1.26, -0.02, -0.1);
-      for (const d of [-0.07, 0.07]) B.cyl(chrome, 0.006, 0.006, 0.1, s * 0.38 + d, 1.18, 0);
+      B.rbox(seat2, 0.4, 0.34, 0.02, 0.01, s * 0.38, 0.72, -0.03, -0.16); B.rbox(seat, 0.23, 0.15, 0.1, 0.045, s * 0.38, 1.2, -0.02, -0.1);
+      for (const d of [-0.07, 0.07]) B.cyl(chrome, 0.006, 0.006, 0.1, s * 0.38 + d, 1.13, 0);
       B.rbox(seat, 0.25, 0.17, 0.1, 0.045, s * 0.4, 1.22, -1.13, -0.2);
     }
     B.rbox(seat, 1.38, 0.15, 0.52, 0.06, 0, 0.47, -0.72, 0.05); B.rbox(seat, 1.38, 0.62, 0.15, 0.07, 0, 0.84, -1.07, -0.22);
@@ -221,10 +227,10 @@
     Build.light('point', { pos: [-0.1, 0.9, 0.98], parent: body, color: 0xff9a50, intensity: 0.5, distance: 2.1, decay: 2 });
     Build.light('point', { pos: [-0.05, 0.98, -0.3], parent: body, color: 0x9a94a0, intensity: 0.28, distance: 2.4, decay: 2 });
     // a cardboard pine-tree freshener on a string from the mirror; it swings with the car
-    const fresh = Build.group({ parent: body, pos: [0.04, 1.27, 0.95] }), tree = new THREE.Shape([[0, 0], [0.028, -0.03], [0.012, -0.03], [0.034, -0.062], [0.014, -0.062], [0.04, -0.1], [0.004, -0.1], [0.004, -0.115], [-0.004, -0.115], [-0.004, -0.1], [-0.04, -0.1], [-0.014, -0.062], [-0.034, -0.062], [-0.012, -0.03], [-0.028, -0.03]].map(p => new THREE.Vector2(p[0], p[1])));
+    const fresh = Build.group({ parent: body, pos: [0.04, 1.31, 0.45] }), tree = new THREE.Shape([[0, 0], [0.028, -0.03], [0.012, -0.03], [0.034, -0.062], [0.014, -0.062], [0.04, -0.1], [0.004, -0.1], [0.004, -0.115], [-0.004, -0.115], [-0.004, -0.1], [-0.04, -0.1], [-0.014, -0.062], [-0.034, -0.062], [-0.012, -0.03], [-0.028, -0.03]].map(p => new THREE.Vector2(p[0], p[1])));
     Build.mesh(new THREE.ShapeGeometry(tree).translate(0, -0.05, 0), C(0x1e5a2a, { rough: 0.9, side: THREE.DoubleSide }), { parent: fresh, shadow: false });
     Build.mesh(new THREE.BoxGeometry(0.002, 0.05, 0.002).translate(0, -0.025, 0), trim, { parent: fresh, shadow: false });
-    const eye = new THREE.Object3D(); eye.position.set(...EYE); body.add(eye);
+    const eye = new THREE.Object3D(); eye.position.set(...EYE); eye.rotation.x = 0.06; body.add(eye);   // her eyeline dips a touch below the roof
     Object.assign(D, { car, body, wheel: spin, needle, eye, fresh });
   }
 
@@ -737,8 +743,8 @@
     D.radio = true; await G.wait(0.4); G.sfx('radio_click', { pos: radioAt() }); dj.stop(0.05); D.dj = null; setRadio(null); await G.wait(0.3); D.radio = false;
     // 3 — quiet; Chase turns to the road; Bub looks at the back of her dad's head
     await G.wait(1.2);
-    const tw = D.riders.get(chase); chase.lookAt(ahead);
-    for (let i = 1; i <= 45; i++) { const k = U.smooth(i / 45); tw.yaw = -0.95 * (1 - k); D.chaseArm = 1 - k; await G.wait(1 / 30); }
+    chase.lookAt(ahead); chase.pose('sit_car', { dur: 1.6 });
+    for (let i = 1; i <= 45; i++) { D.chaseArm = 1 - U.smooth(i / 45); await G.wait(1 / 30); }
     await until(S_TALK - 25);
     Play.forceLook(chaseHead(), 0.35);
     await until(S_TALK);
