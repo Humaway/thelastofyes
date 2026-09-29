@@ -1229,7 +1229,7 @@ const AI = (() => {
 
   return {
     list, spawn, companion, noise, hitTest, takedownTarget, update, clear, unloadArea, extendArea, fire,
-    listenTargets: (p, r) => list.filter(a => enemy(a) && flat(pos(a), p) < r && (a.type === 'scroller' || a.type === 'clicker' || a.type === 'bloatware' || a.v > 0.3 || a.state === 'combat')),
+    listenTargets: (p, r) => list.filter(a => enemy(a) && flat(pos(a), p) < r),   // everyone breathes ("You can hear 'em breathing.")
     byName: n => (list.find(a => a.name === n || a.char.name === n) || {}).char || null,
     nav: { path: (from, to) => { const g = AINav.get(Game.area); return g ? g.path(U.v3(from), U.v3(to)) : null; } },
     get detectors() { return detectors; }, get alertLevel() { return alertLevel; }, get grabber() { return grabber; },

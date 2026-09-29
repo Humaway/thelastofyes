@@ -16,6 +16,7 @@ CONTENT.chapters.ch1 = {
     { id: '1.1', checkpoint: true, run: async G => { await G.card('ch1'); await G.hook('ch1.1'); } },
     { id: '1.2', checkpoint: true, run: G => G.hook('ch1.2') },
     { id: '1.3', checkpoint: true, run: G => G.hook('ch1.3') },
+    { id: '1.3b', checkpoint: true, run: G => G.hook('ch1.3b') },
     { id: '1.4', checkpoint: true, run: G => G.hook('ch1.4') },
     { id: '1.5', run: G => G.hook('ch1.5') },
     { id: '1.6', checkpoint: true, run: G => G.hook('ch1.6') },

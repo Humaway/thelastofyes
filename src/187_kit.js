@@ -138,8 +138,13 @@ const Kit = (() => {
   // ---- collectibles ------------------------------------------------------------------------------------------------
   function paper(g, w, d, col) { part(g, B(w, 0.003, d), mat(col, { rough: 0.95 }), [0, 0.002, 0], [0, 0.2, 0]); }
   function collectible(A, S, o) {
-    const entry = (o.kind === 'tip' ? CONTENT.tips : CONTENT.collectibles[o.kind + 's']).find(e => e.id === o.id);
-    if (o.kind === 'tip') return A.interactable({ at: o.at, r: 1.6, prompt: 'e – joke', cond: () => !S.act, use: () => speak(entry.lines) });
+    const entry = o.kind === 'tip' ? CONTENT.tips.find(e => e.n === o.id) : CONTENT.collectibles[o.kind + 's'].find(e => e.id === o.id);
+    // a Sales Tip: Chloe reads it from The Yes Way, then riffs (spec §17)
+    if (o.kind === 'tip') return A.interactable({ at: o.at, r: 1.6, prompt: 'e – joke', cond: () => !S.act, use: () => {
+      const flat = entry.act === 'flat_close';
+      if (flat) Game.who('chase')?.lookAt(Game.who('chase').point('head').add(U.fwd(Game.who('chase').yaw + 2.2).multiplyScalar(3)));
+      speak([{ who: 'chloe', text: entry.tip, emote: flat ? 'sad' : 'smile' }, ...entry.lines]);
+    } });
     if (Save.data.collectibles[o.kind + 's'].includes(o.id)) return null;
     const g = new THREE.Group();
     if (o.kind === 'artifact') paper(g, 0.21, 0.28, 0xe8e2d2);

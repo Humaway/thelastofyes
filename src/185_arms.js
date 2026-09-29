@@ -563,6 +563,7 @@ const Arms = (() => {
   // ---- hands: props, aim pose and IK -----------------------------------------------------------------------------
   function hands(S, dt) {
     const c = S.c, inv = S.inv, w = inv.weapon, g = w && GUN[w];
+    if (Director.active) return;                                        // scenes own the player's hands and props
     if (S.act && (!S.act.move || S.act.name === 'carry')) {           // traversal, carrying, bench, backpack: hands free
       if (!['takedown', 'grab', 'death'].includes(S.act.name)) { hold(c, 'r', null); hold(c, 'l', null); }
       return;
