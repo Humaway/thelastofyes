@@ -18,17 +18,19 @@
 //                                                on the south wall at x 0, front window x 2.2..4.4
 //   Outside         front yard z 3.2..9.7, road along z 15.6, park, then black water with the bridge lights far off;
 //                   next door (x 9..19) the Neighbour stands on his lawn at [8.6, -0.12, 8.8] staring at his phone.
-//   One shadow light: the sodium streetlight at [7.0, 0, 11.6] (spot through the front window). Headlights: a spot that
-//   rides Luke's car in P.4. Every light that changes state changes intensity only (no recompiles).
+//   One shadow light: the sodium streetlight at [7.0, 0, 11.6] (spot through the front window; props inside the house
+//   outside the lounge don't cast, to keep the shadow pass small). Headlights: an unshadowed spot riding Luke's car in P.4;
+//   the phone's glow on Bub's face: a small point light that follows her phone (D.glowAt). Every light that changes state
+//   changes intensity only (no recompiles).
 //
 //   Markers (local)                                  notes
 //   mk_start      [0.6, 0, -0.6]    π/2              dev free roam (living area)
-//   mk_bub_bed    [-6.09, 0.45, -3.82] 0             Bub lying on her bed (pelvis ground point on the mattress)
+//   mk_bub_bed    [-6.21, 0.54, -3.82] 0             Bub lying on her bed (pelvis ground point on the duvet)
 //   mk_bub_up     [-5.0, 0, -3.6]   π/2              standing beside the bed
 //   mk_couch      [2.1, 0.06, 0.72] π/2              seated on the couch facing the TV (mk_couch_front: standing in front)
-//   mk_tv_btn     [4.3, 0, 1.95]    π/2              in front of the TV's corner (power button at [4.84, 0.7, 1.72])
+//   mk_tv_btn     [4.2, 0, 1.95]    π/2              in front of the TV's corner (power button at [4.84, 0.7, 1.72])
 //   mk_bub_p4     [2.85, 0, -0.55]  2.0              P.4 start: in the dark beside the couch
-//   mk_bub_back   [4.35, 0, 2.2]    -1.75            P.4: backed into the corner by the window, in the streetlight
+//   mk_bub_back   [4.35, 0, 2.2]    -1.4             P.4: backed into the corner by the window, in the streetlight
 //   mk_bub_pulled [3.0, 0, -2.75]   0                where Luke pulls her to (the kitchen light: the face-hold)
 //   mk_door_out   [0.0, -0.02, 3.72] π              the porch, facing the door (the Neighbour's silhouette)
 //   mk_nb_in / mk_nb_tackle / mk_nb_down             the Neighbour's way in / where Chase hits him / on the broken table
@@ -42,12 +44,16 @@
 //   prologue.P3   the call (scene P.3), store and house intercut; builds both areas itself when started on its own
 //   prologue.P4   P1 unloaded, the dark lounge (playable), Bub turns the TV off, two knocks, the silhouette, "Go away." —
 //                 then scene P.4; ends on the three of them heading for the headlights (hard cut to prologue.P5)
-//   p2.house / p2.store (scene cues)  switch hemisphere fills when a scene cuts between the house and the store
-//   (internal: p2.getUp, p2.sit, p2.hangUp, p2.glass, p2.door, p2.car, p2.impact, p3.slam)
+//   p2.house / p2.store (scene cues)  look + hemisphere fills when a scene cuts between the house and the store
+//   (internal: p2.getUp, p2.sit, p2.ear, p2.hangUp, p2.send, p2.phoneOff, p2.glass, p2.door, p2.car, p2.impact, p2.up, p3.slam)
+//
+// POSES registered here only if the chars module lacks them (Anim.POSES): sit_phone_l (seated, phone at the LEFT ear, so a
+//   close-up from her right keeps her face clear) and sit_phone (on the edge of the bed, phone held up to her face).
 // ============================================================================
 (() => {
   const PI = Math.PI, M = (n, o) => Tex.mat(n, o), C = (h, o) => Tex.color(h, o), V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
   const HT = 2.6, OX = 500, w = (x, y, z) => [x + OX, y, z];
+  const POV_BED = w(-4.4, 1.12, -3.28);    // where the frame on her sitting on the bed ends up (P.2.up dollies on from here)
   const MSG = 'proud of u dad. dont sell too m', DAD = 'Dad 🏆', NOTE = 'INFINITE is ready. Installs at 12:00. A feed that finally understands you.';
   const THREAD = [{ stamp: 'Today 11:39 PM' }, { from: 'me', text: 'wat time u home' }, { from: 'them', text: 'after midnight. go to bed. love u' }];
   const LINES = {
@@ -61,6 +67,19 @@
   const NEWS = '…with the INFINITE update rolling out nationally at midnight. The network says it\'s the biggest update in the country\'s history, promising what developers call "a feed that finally understands you."';
   const BUB = { walk: 1.05, jog: 0, run: 0, accel: 5 };   // fluffy socks: slow, no run, soft steps
   const HK = CONTENT.hooks, P1 = () => Game.areas.get('P1'), P2 = () => Game.areas.get('P2');
+  // seated on the couch with the phone at her LEFT ear (her close-ups favour her right side, so the phone stays behind her
+  // cheek): the sit pose with a mirrored phone_ear arm (IK to the ear, palm to the head). Registered only when the chars
+  // module does not provide it.
+  if (!Anim.POSES.sit_phone_l) {
+    const e = Anim.POSES.phone_ear.ik.R[1];
+    Anim.POSES.sit_phone_l = { p: Anim.mk({ armL: [0.25, 0.42, 0.3], foreL: [2.45, 0.9], handL: [0.2, -0.2], fingL: 0.75, fing2L: 0.6, head: [-0.02, 0, 0.08] }, Anim.POSES.sit.p),
+      ik: { L: ['head', [-e[0], e[1], e[2]]] }, palm: { L: 'head' } };
+  }
+  // sitting on the edge of the bed, the phone held up in front of her face (sit legs, the crowd 'phone' arm)
+  if (!Anim.POSES.sit_phone) {
+    const ph = Anim.POSES.phone;
+    Anim.POSES.sit_phone = { p: Anim.mk({ neck: [0.3, 0, 0], head: [0.12, 0, 0], armR: [0.5, 0.05, -0.5], foreR: [1.9, 0.6], handR: [0.1, 0.1], fingR: 0.9, fing2R: 0.7, thumbR: 0.1 }, Anim.POSES.sit.p), ik: ph.ik, palm: ph.palm };
+  }
 
   // ---- canvas helpers (area-owned textures: disposed with the area) ----------------------------------------------------
   function canvasTex(cw, ch, draw) {
@@ -92,14 +111,16 @@
   }
   // Bub's phone screen seen in the room: her thread with Dad (the overlay carries the words)
   function msgTex(sending) {
-    return canvasTex(128, 256, (g, cw, ch) => {
+    const t = canvasTex(128, 256, (g, cw, ch) => {
       g.fillStyle = '#f3f4f6'; g.fillRect(0, 0, cw, ch);
       g.fillStyle = '#e2e4e8'; g.fillRect(0, 0, cw, 40); g.fillStyle = '#9aa0aa'; g.beginPath(); g.arc(64, 17, 9, 0, 7); g.fill();
       const bub = (x, y, bw, bh, c) => { g.fillStyle = c; g.beginPath(); g.roundRect(x, y, bw, bh, 9); g.fill(); };
-      bub(8, 56, 74, 20, '#2f7cf6'); bub(8, 84, 86, 30, '#dfe1e6');
+      bub(46, 56, 74, 20, '#2f7cf6'); bub(8, 84, 86, 30, '#dfe1e6');
       if (sending) { bub(30, 124, 90, 34, '#2f7cf6'); g.fillStyle = '#8a909a'; g.font = '11px sans-serif'; g.textAlign = 'right'; g.fillText('Sending…', 118, 174); }
       else { g.fillStyle = '#d3d6dc'; g.fillRect(0, 170, cw, 86); g.fillStyle = '#fff'; for (let rI = 0; rI < 4; rI++) for (let k = 0; k < 9; k++) g.fillRect(4 + k * 13.5, 176 + rI * 19, 11, 15); g.fillStyle = '#2f7cf6'; g.fillRect(6, 150, 70, 12); }
     });
+    t.center.set(0.5, 0.5); t.rotation = PI;                        // the held phone's screen UVs run top-down toward the wrist
+    return t;
   }
   // a sunset print of the bay over the TV (bought at the Sunday markets)
   function bayPrint() {
@@ -180,8 +201,8 @@
     Build.fairyLights({ points: [[-6.66, 2.2, -1.62], [-6.66, 2.22, -3.3], [-6.66, 2.2, -4.85], [-5.2, 2.28, -4.86], [-3.36, 2.2, -4.86]], color: 0xffb896, per: 7, sag: 0.16 });
     Build.prop('ceiling_light', { pos: [-5.0, HT, -3.2], kind: 'pendant', on: false });
     // the new phone glowing on the duvet
-    D.bedPhone = Build.prop('phone', { pos: [-5.88, 0.585, -3.2], yaw: 0.5, screen: 'lock', k: 1.4, dynamic: true, solid: false, blob: false });
-    D.bedGlow = Build.glow({ pos: [-5.88, 0.64, -3.2], color: 0x7ab0ff, size: 0.55, opacity: 0.6, dynamic: true });
+    D.bedPhone = Build.prop('phone', { pos: [-5.72, 0.6, -4.02], yaw: 0.9, screen: 'lock', k: 1.4, dynamic: true, solid: false, blob: false });
+    D.bedGlow = Build.glow({ pos: [-5.72, 0.66, -4.02], color: 0x7ab0ff, size: 0.55, opacity: 0.6, dynamic: true });
   }
 
   function hallway(A, D) {
@@ -209,7 +230,7 @@
     D.fridge = Build.prop('fridge', { pos: [4.6, 0, -4.53], dynamic: true });
     D.gift = Build.prop('gift_box', { pos: [2.35, 0.9, -4.42], yaw: 0.35 });
     Build.prop('window', { pos: [1.0, 1.15, -5.0], w: 1.4, h: 0.95, curtains: false, blind: true });
-    Build.box(2.7, 0.02, 0.05, C(0xfff2d8, { emissive: 0xffd8a0, emissiveIntensity: 1.3 }), { pos: [1.8, 1.14, -4.6], solid: false });   // strip light under the cupboards
+    Build.box(2.7, 0.02, 0.05, C(0xfff2d8, { emissive: 0xffd8a0, emissiveIntensity: 0.6 }), { pos: [1.8, 1.14, -4.6], solid: false });   // strip light under the cupboards
     Build.box(0.35, 0.3, 0.3, C(0xd8dcd8, { rough: 0.4 }), { pos: [0.1, 0.9, -4.63], bevel: 0.03, solid: false });                    // microwave-ish appliance
     // dining: dinner for one, school books
     Build.prop('dining_table', { pos: [0.3, 0, -2.45], w: 1.6, d: 0.9 });
@@ -235,10 +256,10 @@
     Build.prop('plant_pot', { pos: [4.85, 0, 2.85], kind: 'fern' });
     Build.box(1.12, 0.74, 0.04, M('wood', { color: 0x3a2a1e }), { pos: [5.06, 1.36, 1.2], yaw: PI / 2, solid: false });
     Build.mesh(new THREE.PlaneGeometry(1.04, 0.66), new THREE.MeshStandardMaterial({ map: bayPrint(), roughness: 0.5 }), { pos: [5.035, 1.73, 1.2], yaw: -PI / 2, shadow: false });
-    Build.box(0.62, 0.74, 0.32, M('wood', { color: 0x6a4a32 }), { pos: [1.25, 0, 2.9], bevel: 0.01 });                               // hall table by the door
-    Build.box(0.16, 0.05, 0.2, C(0x1a1b1d, { rough: 0.4 }), { pos: [1.12, 0.74, 2.9], yaw: 0.2, bevel: 0.01, solid: false });     // cordless landline base
-    Build.box(0.012, 0.012, 0.004, C(0x40ff70, { emissive: 0x40ff70, emissiveIntensity: 3 }), { pos: [1.07, 0.792, 2.99], solid: false });
-    Build.box(0.25, 0.012, 0.18, C(0xf0ece2, { rough: 0.9 }), { pos: [1.4, 0.74, 2.88], yaw: -0.3, solid: false });                  // mail
+    Build.box(0.62, 0.74, 0.32, M('wood', { color: 0x6a4a32 }), { pos: [-1.35, 0, 2.9], bevel: 0.01 });                              // hall table by the door
+    Build.box(0.16, 0.05, 0.2, C(0x1a1b1d, { rough: 0.4 }), { pos: [-1.48, 0.74, 2.9], yaw: 0.2, bevel: 0.01, solid: false });    // cordless landline base
+    Build.box(0.012, 0.012, 0.004, C(0x40ff70, { emissive: 0x40ff70, emissiveIntensity: 3 }), { pos: [-1.53, 0.792, 2.99], solid: false });
+    Build.box(0.25, 0.012, 0.18, C(0xf0ece2, { rough: 0.9 }), { pos: [-1.2, 0.74, 2.88], yaw: -0.3, solid: false });                 // mail
     D.frontWin = Build.prop('window', { pos: [3.3, 0.75, 3.2], yaw: PI, w: 2.2, h: 1.45, color: 0xb8a888, open: 0.8 });
     // front door: frosted panel drawn by hand so the porch light (and later the silhouette) shows through
     D.door = Build.prop('front_door', { pos: [0.0, 0, 3.2], yaw: PI, w: 0.87, thick: 0.24 });
@@ -258,7 +279,7 @@
     Build.box(0.3, 0.06, 0.03, M('wood', { color: 0x6a4a32 }), { pos: [0.72, 1.55, 3.06], solid: false });
     Build.prop('ceiling_light', { pos: [0.8, HT, -2.4], kind: 'pendant', on: false });
     // the phone the Neighbour drops when Chase hits him: face up, still scrolling
-    D.floorPhone = Build.prop('phone', { pos: [2.55, 0.01, 2.15], yaw: 2.2, screen: 'feed', k: 1.3, dynamic: true, solid: false, blob: false });
+    D.floorPhone = Build.prop('phone', { pos: [2.6, 0.01, 2.5], yaw: 2.2, screen: 'feed', k: 1.3, dynamic: true, solid: false, blob: false });
     D.floorPhone.visible = false;
   }
 
@@ -280,12 +301,14 @@
     // street, verge, the park, the bay
     Build.road({ from: [-60, 15.6], to: [70, 15.6], width: 7, lines: 'dashed', y: -0.14 });
     Build.streetlight({ pos: [7.0, -0.12, 11.6], kind: 'road', light: false });
-    Build.streetlight({ pos: [-26, -0.12, 11.6], kind: 'road', light: false });
-    Build.streetlight({ pos: [34, -0.12, 11.6], kind: 'road', light: false });
+    // the rest of the street's lamps are only ever seen through the windows: sodium glows and their pools, no poles
+    for (const [x, z, y] of [[-26, 11.6, 8.5], [34, 11.6, 8.5], [14, 28.5, 4.4]]) {
+      Build.glow({ pos: [x, y, z], color: 0xffa650, size: 1.4, opacity: 0.95 });
+      Build.pool({ pos: [x, -0.13, z + (z < 20 ? 1.4 : 0)], r: 4, color: 0xff9a40, opacity: 0.16 });
+    }
     Build.floor(-60, 21.5, 70, 30, grass, { y: -0.14, surface: 'grass' });
     for (const [x, z, s] of [[-12, 25, 1.0], [6, 26, 1.15], [24, 24.5, 0.9]]) Build.tree('palm', { pos: [x, -0.14, z], scale: s, seed: x });
     Build.prop('bench', { pos: [1.5, -0.14, 24.5], yaw: PI });
-    Build.streetlight({ pos: [14, -0.14, 28.5], kind: 'heritage', light: false });
     Build.box(130, 0.6, 1.2, M('sandstone', { color: 0x8a8070 }), { pos: [5, -0.74, 30.3], solid: false });
     Build.water({ x1: -140, z1: 30.8, x2: 160, z2: 220, y: -1.0, dark: true });
     // the Houghton Highway bridge far across the water: a string of sodium lights with their reflections (no fog: they are the
@@ -296,7 +319,7 @@
     const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
     A.add(new THREE.Points(bg, bridgeM));
     A.add(Object.assign(new THREE.Mesh(mergeGeometries(refl), new THREE.MeshBasicMaterial({ map: gt, color: 0x6a3a14, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })), { renderOrder: 3 }));
-    // next door: brick, a blue window, porch light on, front door open, the car in the drive; the fence between
+    // next door: brick, a blue window, porch light on, front door open; the fence between
     Build.room({ x: 14, z: -1.2, w: 10, d: 9.6, h: 2.6, wall: M('plaster', { color: 0xd8d0c0 }), outside: M('brick', { color: 0xb88a70 }), floor: false, ceil: false,
       windows: [{ side: 's', at: -2.2, w: 1.8, h: 1.3, sill: 0.8 }, { side: 'w', at: 0.5, w: 1.2, h: 1.1, sill: 0.95 }], doors: [{ side: 's', at: 1.8, w: 0.95, h: 2.1 }] });
     Build.roof({ x: 14, z: -1.2, y: 2.66, w: 10.3, d: 9.9, kind: 'hip', pitch: 0.4, mat: M('roof_tiles', { color: 0x6a6a70 }) });
@@ -305,7 +328,6 @@
     Build.glow({ pos: [15.0, 2.2, 3.75], color: 0xffc880, size: 0.8, opacity: 0.85 });
     Build.pool({ pos: [15.8, -0.1, 4.6], r: 2.2, color: 0xffb870, opacity: 0.22 });
     Build.floor(15.2, 3.6, 16.4, 9.7, conc, { y: -0.1, surface: 'concrete' });
-    Build.car('sedan', { pos: [17.9, -0.12, 6.2], yaw: PI, color: 0x9a9c9e });
     Build.prop('letterbox', { pos: [14.4, -0.12, 9.3], kind: 'post' });
     Build.prop('fence', { kind: 'colorbond', pos: [7.35, -0.12, -12], yaw: -PI / 2, length: 15.6, h: 1.8 });
     // the backyard, dark through Bub's window and the kitchen's: back fence, Hills hoist, mango tree, shed
@@ -341,14 +363,25 @@
       D.head = Build.light('spot', { pos: [0, 1, 20], target: [0, 0, 0], color: 0xf4f0e6, intensity: 0, distance: 40, angle: 0.5, penumbra: 0.5 });
       D.car = Build.car('hatch', { pos: [-30, -0.14, 14.6], yaw: PI / 2, color: 0x3a4652, lights: true, beams: true, dynamic: true });
       D.car.visible = false;
+      D.phoneL = Build.light('point', { pos: [-5.88, 0.7, -3.2], color: 0x8ab4ff, intensity: 0, distance: 1.8 });   // the phone's glow on her face (follows D.glowAt)
       Build.dust({ box: [-2, 0.3, -4.8, 5, 2.4, 3], count: 120, opacity: 0.16, size: 0.013 });
       Build.dust({ box: [-6.7, 0.3, -4.9, -3.3, 2.4, -1.5], count: 60, opacity: 0.2, size: 0.013, color: 0xffd0b8 });
+      // the sodium spot only gets in through the front window: props anywhere else inside needn't cast (walls, roof and
+      // the lounge still do), which keeps the shadow pass small
+      const bb = new THREE.Box3(), c = V(), sz = V();
+      A.group.updateMatrixWorld(true);
+      A.group.traverse(o => {
+        if (!o.isMesh || !o.castShadow) return;
+        bb.setFromObject(o).getCenter(c).sub(A.origin); bb.getSize(sz);
+        const inside = c.x > -6.9 && c.x < 5.3 && c.z > -5.1 && c.z < 3.3, big = sz.y > 2.3 || Math.max(sz.x, sz.z) > 3, lounge = c.x > 1.3 && c.z > -0.6;
+        if (inside && !big && !lounge) o.castShadow = false;
+      });
       // ---- the Neighbour on his lawn -------------------------------------------------------------------------------
       const nb = D.neighbour = A.char('neighbour', { name: 'neighbour', at: [8.6, -0.12, 8.8], yaw: -2.42 });
       if (!nb.held('r')) nb.hold('phone');
       nb.pose('phone'); nb.phoneGlow(true);
       // ---- markers -------------------------------------------------------------------------------------------------
-      for (const [n, p, y] of [['mk_start', [0.6, 0, -0.6], PI / 2], ['mk_bub_bed', [-6.21, 0.45, -3.82], 0], ['mk_bub_up', [-5.0, 0, -3.6], PI / 2],
+      for (const [n, p, y] of [['mk_start', [0.6, 0, -0.6], PI / 2], ['mk_bub_bed', [-6.21, 0.54, -3.82], 0], ['mk_bub_up', [-5.0, 0, -3.6], PI / 2],
         ['mk_couch', [2.1, 0.06, 0.72], PI / 2], ['mk_couch_front', [2.78, 0, 0.72], PI / 2], ['mk_tv_btn', [4.2, 0, 1.95], PI / 2],
         ['mk_bub_p4', [2.85, 0, -0.55], 2.0], ['mk_bub_back', [4.35, 0, 2.2], -1.4], ['mk_bub_pulled', [3.0, 0, -2.75], 0],
         ['mk_door_out', [0.0, -0.02, 3.72], PI], ['mk_nb_in', [0.3, 0, 2.45], 1.2], ['mk_nb_tackle', [2.95, 0, 2.25], 1.6], ['mk_nb_down', [3.15, 0.12, 1.15], 1.9],
@@ -378,6 +411,8 @@
           if (k >= 1) D.tweens.splice(i, 1);
         }
         if (D.drive) driveCar(D, dt);
+        D.phoneL.intensity = U.damp(D.phoneL.intensity, D.glowAt ? 0.08 : 0, 5, dt);
+        if (D.glowAt) D.glowAt(D.phoneL.position).sub(A.origin);
       });
     },
     unload(A) {
@@ -391,6 +426,12 @@
 
   // ---- runtime helpers ---------------------------------------------------------------------------------------------------
   function tween(c, to, yaw, dur) { const D = P2().data; D.tweens.push({ c, from: c.root.position.clone(), to: to.isVector3 ? to.clone() : P2().w(to), y0: c.yaw, yaw, t: 0, dur }); }
+  // the Neighbour's phone glows on both faces: however his hand turns it, the feed faces her
+  function twoFaced(ph) {
+    if (!ph || ph.userData.back) return;
+    const s = ph.userData.screen, b = ph.userData.back = s.clone();
+    b.rotation.y = PI; b.position.z = -s.position.z; ph.add(b);
+  }
   function screen(ph, tex) {   // a lit screen material for a held phone
     const D = P2().data, m = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(0.62, 0.64, 0.7), toneMapped: false });
     D.mats.push(m); ph.userData.screen.material = m; return m;
@@ -447,10 +488,10 @@
     D.drive.t += dt;
     const u = U.ease.out(U.clamp(D.drive.t / 4.2)), p = c.getPointAt(u), tn = c.getTangentAt(Math.min(0.999, u));
     D.car.position.copy(p); D.car.rotation.y = Math.atan2(tn.x, tn.z);
-    const A = P2(), f = V(Math.sin(D.car.rotation.y), 0, Math.cos(D.car.rotation.y));
-    D.head.position.copy(A.w([p.x, 0.75, p.z])).addScaledVector(f, 2.1);
+    const f = V(Math.sin(D.car.rotation.y), 0, Math.cos(D.car.rotation.y));   // (the spot lives in the area group: local coords)
+    D.head.position.set(p.x, 0.75, p.z).addScaledVector(f, 2.1);
     D.head.target.position.copy(D.head.position).addScaledVector(f, 12).add(V(0, -0.6, 0));
-    D.head.intensity = 900 * U.clamp(D.drive.t * 2);
+    D.head.intensity = 140 * U.clamp(D.drive.t * 2);
     if (u >= 1) D.drive = null;
   }
 
@@ -480,9 +521,11 @@
     phoneUp(G, bub, msgTex(false));
     A.data.lampOn.visible = true;
   }
+  // the phone light rides between her hand and her eyes
+  function glowOn(c) { const e = V(); P2().data.glowAt = o => c.point('hand_r', o).lerp(c.point('eyes', e), 0.55); }
   function phoneUp(G, bub, tex) {
     const ph = bub.held('r') || bub.hold('phone', 'r');
-    bub.phoneGlow(true); screen(ph, tex);
+    bub.phoneGlow(true); screen(ph, tex); glowOn(bub);
   }
 
   // ---- P.2 — Bub -----------------------------------------------------------------------------------------------------
@@ -493,27 +536,31 @@
     for (const h of ['r', 'l']) if (bub.held(h)) bub.drop(h, { remove: true });
     bub.pose('lie', { dur: 0.01 }); bub.emote('neutral'); bub.lookAt(A.w([-5.9, 2.4, -3.4]));
     const ph = bub.hold('phone', 'r'); screen(ph, Tex.screen('lock', { time: '11:44' })); ph.visible = false;
+    const bedPh = A.w([-5.72, 0.6, -4.02]);
+    D.glowAt = o => o.copy(bedPh).setY(0.72);                       // the phone on the duvet by her hand lights her from the side
     Engine.renderer.compile(Engine.scene, Engine.camera);           // the light set changed and Bub is new: compile it all now, behind the cut
-    // opening frame: her face in the phone's glow, the fairy lights behind; a slow push while she waits
-    const cam = { pos: A.w([-5.2, 1.25, -2.75]), target: A.w([-6.4, 0.95, -4.45]), fov: U.lensToFov(30) };
-    const from = cam.pos.clone(), to = A.w([-5.4, 1.15, -3.0]), t0 = G.t;
-    Director.manual(cam);
-    const push = A.update(() => { cam.pos.lerpVectors(from, to, U.ease.sine(U.clamp((G.t - t0) / 14))); });
+    // opening frame: close from above the bed, her face on the pillow and the phone glowing by her hand; a slow push while
+    // she waits (the notification overlay owns the right third of the frame). Cut on action to a wider frame as she sits up.
+    const cam = { pos: A.w([-5.42, 1.58, -3.52]), target: A.w([-6.1, 0.64, -4.26]), fov: U.lensToFov(35) };
+    let push = null;
+    const drift = (to, dur) => { const from = cam.pos.clone(), t0 = G.t; if (push) A.updaters.splice(A.updaters.indexOf(push), 1); push = A.update(() => { cam.pos.lerpVectors(from, to, U.ease.sine(U.clamp((G.t - t0) / dur))); }); };
+    Director.manual(cam); drift(A.w([-5.6, 1.42, -3.72]), 12);
     await G.wait(1.3);
-    G.sfx('notif_chime', { pos: A.w([-5.88, 0.6, -3.2]), vol: 0.6 }); bub.lookAt(A.w([-5.88, 0.6, -3.2]));
+    G.sfx('notif_chime', { pos: bedPh, vol: 0.6 }); bub.lookAt(bedPh);
     UI.phone({ kind: 'notification', time: '11:44 PM', notif: { app: 'INFINITE', text: NOTE } });
     await G.wait(1.6);
-    bub.pose('sit_ground', { dur: 1.3 }); tween(bub, [-6.15, 0.46, -3.54], 0.5, 1.3);
+    cam.pos.copy(A.w([-4.22, 1.16, -3.18])); cam.target.copy(A.w([-5.37, 1.0, -3.84])); cam.fov = U.lensToFov(32); drift(V(...POV_BED), 8);
+    bub.pose('sit', { dur: 1.3 }); tween(bub, [-5.45, 0.07, -3.6], PI / 2, 1.3); bub.gesture('hand_over', { to: bedPh, hand: 'l' });   // up onto the edge of the bed
     await G.wait(0.9);
     D.bedPhone.visible = false; D.bedGlow.visible = false;
-    ph.visible = true; bub.phoneGlow(true); screen(ph, Tex.screen('lock', { time: '11:44' }));
+    ph.visible = true; bub.phoneGlow(true); screen(ph, Tex.screen('lock', { time: '11:44' })); glowOn(bub); bub.pose('sit_phone', { dur: 0.7 });
     bub.lookAt(() => bub.point('hand_r'));
     UI.phone({ kind: 'lock', time: '11:44 PM', notif: { app: 'INFINITE', text: NOTE } });
     await G.wait(1.4);
     UI.prompt('e – get up');
     await G.until(() => Input.pressed('interact'));
     UI.prompt(null); UI.phone(null);
-    bub.phoneGlow(false); bub.lookAt(null);
+    bub.phoneGlow(false); bub.lookAt(null); D.glowAt = null;
     A.updaters.splice(A.updaters.indexOf(push), 1);
     G.player(bub, BUB);
     Director.manual(null);
@@ -554,11 +601,11 @@
     await G.until(() => Input.pressed('interact'));
     UI.prompt(null); ring.stop(0.05); G.sfx('pickup', { pos: bub.point('hand_r'), vol: 0.4 });
   };
-  // getting up: legs over the edge, then up onto her socks
+  // getting up off the edge of the bed onto her socks
   HK['p2.getUp'] = async G => {
     const bub = G.who('bub');
-    bub.pose('sit', { dur: 0.9 }); tween(bub, [-5.45, 0.07, -3.6], PI / 2, 0.9);
-    await G.wait(1.15);
+    bub.pose('sit', { dur: 0.5 });
+    await G.wait(0.6);
     bub.pose('stand', { dur: 0.8 }); tween(bub, [-5.0, 0, -3.6], PI / 2, 0.75);
   };
   // onto the couch: in front of it, turn, sit back into the cushions, phone up
@@ -572,7 +619,6 @@
     bub.gesture('type_phone', { hold: true }); bub.lookAt(() => bub.point('hand_r'));
   };
 
-  const POV_BED = w(-5.4, 1.15, -3.0);
   CONTENT.scenes['P.2.up'] = {
     title: 'Get Up', area: 'P2', letterbox: false, skippable: false, start: { blend: 0.6 },
     shots: [{ cam: { type: 'dolly', from: POV_BED, to: w(-3.75, 1.4, -2.5), look: 'bub.chest', lens: 30, dur: 3.2 }, dur: 3.0, focus: 'bub',
@@ -601,16 +647,19 @@
     D.lampOn.visible = true;
     await G.scene('P.3');
   };
-  // seated, so the phone goes to her ear as a held reach (the phone_ear pose is a standing pose)
+  // the phone to her ear, still on the couch; and back down to the thread
   HK['p2.ear'] = G => {
-    const bub = G.who('bub'), hs = bub.D.hs, ear = V(), A = P2();
-    const follow = A.update(() => { if (bub.gest && bub.gest.o.to === ear) bub.bones.head.localToWorld(ear.set(-0.085 * hs, -0.03 * hs, 0.01 * hs)); else A.updaters.splice(A.updaters.indexOf(follow), 1); });
-    bub.bones.head.updateWorldMatrix(true, false); bub.bones.head.localToWorld(ear.set(-0.085 * hs, -0.03 * hs, 0.01 * hs));
-    bub.gesture('hand_over', { to: ear, hold: true }); bub.lookAt(A.w([4.6, 1.0, 0.9]));
+    const bub = G.who('bub'), ph = bub.drop('r', { remove: true });
+    bub.gesture(null); if (ph) bub.hold(ph, 'l');
+    bub.pose('sit_phone_l', { dur: 0.45 }); bub.lookAt(P2().w([4.6, 1.0, 0.9])); P2().data.glowAt = null;
   };
-  HK['p2.hangUp'] = G => { const bub = G.who('bub'); screen(bub.held('r'), msgTex(false)); bub.gesture('type_phone', { hold: true }); bub.lookAt(() => bub.point('hand_r')); };
+  HK['p2.hangUp'] = G => {
+    const bub = G.who('bub'), ph = bub.drop('l', { remove: true });
+    if (ph) bub.hold(ph, 'r');
+    bub.pose('sit', { dur: 0.4 }); phoneUp(G, bub, msgTex(false)); bub.gesture('type_phone', { hold: true }); bub.lookAt(() => bub.point('hand_r'));
+  };
   HK['p2.send'] = G => { screen(G.who('bub').held('r'), msgTex(true)); };
-  HK['p2.phoneOff'] = G => { const bub = G.who('bub'); bub.phoneGlow(false); };
+  HK['p2.phoneOff'] = G => { G.who('bub').phoneGlow(false); P2().data.glowAt = null; };
   HK['p3.slam'] = G => { HK['p1.slamPhone'](G); };
   const bubClose = (x, push, extra = {}) => Object.assign({ type: 'static', at: { of: 'bub', off: [x, 1.0, 0.95] }, look: 'bub.eyes', lens: 65, push }, extra);
   const chaseClose = (x, push, extra = {}) => Object.assign({ type: 'static', at: { of: 'chase', off: [x, 1.68, 1.05] }, look: 'chase.eyes', lens: 65, push }, extra);
@@ -652,7 +701,7 @@
         actions: [{ t: 0.4, who: 'bub', do: 'emote', name: 'afraid' }],
         lines: [{ who: 'bub', text: '…Okay. Okay. Love you. Turning it off.', emote: 'afraid', pause: 1.1 }] },
       // 4. Her thumb: send on the half-finished message, then the power button. Sending… and black.
-      { cam: { type: 'extreme_close', who: 'bub', part: 'phone' }, dur: 5.0, focus: 'bub.hand_r',
+      { cam: { type: 'static', at: { of: 'bub', off: [0.2, 1.12, -0.16] }, look: 'bub.hand_r', lens: 50, push: 0.03 }, dur: 5.0, focus: 'bub.hand_r',
         actions: [{ t: 0, do: 'call', hook: 'p2.hangUp' }, { t: 1.3, do: 'call', hook: 'p2.send' }, { t: 3.4, do: 'call', hook: 'p2.phoneOff' }],
         cues: [{ t: 0.2, ui: { phone: { kind: 'messages', title: DAD, time: '11:59 PM', lines: THREAD, draft: MSG, caret: false } } },
           { t: 1.3, ui: { phone: { kind: 'messages', title: DAD, time: '11:59 PM', lines: [...THREAD, { from: 'me', text: MSG, status: 'Sending…' }], draft: '', caret: false } } },
@@ -682,9 +731,9 @@
     G.look('P2'); fills(true); Engine.renderer.compile(Engine.scene, Engine.camera);
     UI.hud({ show: false }); UI.phone(null); UI.prompt(null); G.control(false);
     for (const l of D.loops.splice(0)) l.stop(0.2);
-    D.explore = false; D.tvLoop = null;
+    D.explore = false; D.tvLoop = null; D.glowAt = null;
     // the house gone dark: lamp and kitchen off, the TV on by itself, the newsreader scrolling her own phone on air
-    D.lamp.intensity = 0; D.hall.intensity = 0.55; D.kitchen.intensity = 1.2; D.kitchen.position.copy(A.w([2.7, 1.25, -4.1]));
+    D.lamp.intensity = 0; D.hall.intensity = 0.55; D.hemi.intensity = 0.55; D.street.intensity = 260; D.kitchen.intensity = 1.2; D.kitchen.position.copy(A.w([2.7, 1.25, -4.1]));
     D.lampOn.visible = false; D.lampOff.visible = true;
     D.tv.userData.setScreen('news_scroll');
     const bub = G.actor('bub', 'bub', 'mk_bub_p4');
@@ -692,7 +741,7 @@
     for (const h of ['r', 'l']) if (bub.held(h)) bub.drop(h, { remove: true });
     bub.hold('phone', 'r'); bub.pose('stand', { dur: 0.01 }); bub.gesture(null); bub.emote('afraid'); bub.lookAt(null);
     const nb = D.neighbour;
-    G.place(nb, 'mk_door_out'); nb.pose('stand'); nb.phoneGlow(true); nb.decal('feed_eyes', true);
+    G.place(nb, 'mk_door_out'); nb.pose('stand'); nb.phoneGlow(true); nb.decal('feed_eyes', true); twoFaced(nb.held('r'));
     for (const [id, def, mk] of [['chase', 'chase_young', 'mk_chase_out'], ['luke', 'luke_young', 'mk_luke_out']]) {
       const c = G.actor(id, def, mk); c.stop(); c.detach(); c.pose('stand', { dur: 0.01 }); c.setVisible(false);
       for (const h of ['r', 'l']) if (c.held(h)) c.drop(h, { remove: true });
@@ -703,7 +752,7 @@
     const tv = A.w([4.3, 0, 1.2]), scr = A.w([4.83, 0.9, 1.2]);
     await Promise.race([G.until(() => U.dist2(bub.root.position, tv) < 2.1), G.wait(16)]);
     G.control(false);
-    bub.lookAt(scr);
+    bub.lookAt(scr); turnCam(U.yawTo(bub.root.position, scr), 1.2);
     await bub.walkTo('mk_tv_btn', { speed: 0.9 });
     await bub.turnTo(A.w([4.76, 0, 1.6]), 0.4);
     bub.gesture('hand_over', { to: A.w([4.76, 0.72, 1.74]), hand: 'l' });
@@ -711,16 +760,16 @@
     D.tv.userData.setScreen(null); G.sfx('tv_off', { pos: scr, vol: 0.7 });
     await G.wait(0.8);
     bub.lookAt(null);
-    await bub.walkTo(A.w([3.75, 0, 2.3]), { speed: 0.7 });
-    const door = A.w([0, 0, 3.2]);
-    turnCam(U.yawTo(bub.root.position, door), 1.4); await bub.turnTo(door, 0.9);
+    const door = A.w([0, 0, 3.2]), stop = A.w([0.4, 0, 1.5]);             // round the end of the couch to face the door square-on
+    turnCam(U.yawTo(stop, door), 2.4);
+    await bub.walkTo(stop, { speed: 0.85, path: [A.w([2.1, 0, 2.72]), A.w([1.1, 0, 2.45])] }); await bub.turnTo(door, 0.7);
     G.control(true);
     // 2. a knock; the silhouette at the frosted glass, a phone glowing against it; another knock
     await G.wait(1.8);
     const glass = A.w([0.0, 1.35, 3.12]);
     G.sfx('knock', { pos: glass, vol: 1 });
     D.frost.mat.map = D.frost.sil; D.frost.mat.color.setScalar(1.25);
-    bub.lookAt(glass); bub.emote('afraid'); Play.nudge(glass, 2);
+    bub.lookAt(glass); bub.emote('afraid'); Play.nudge(glass, 2.4); turnCam(U.yawTo(Play.camPose.pos, glass), 1.2);
     await G.wait(2.6);
     G.sfx('knock', { pos: glass, vol: 1 });
     await G.wait(1.3);
@@ -755,18 +804,18 @@
   };
   HK['p2.up'] = G => { const chase = G.who('chase'); chase.detach(); chase.pose('stand', { dur: 0.7 }); chase.decal('blood_knuckles'); };
   CONTENT.scenes['P.4'] = {
-    title: 'Home', area: 'P2', grade: 'launch_home', music: null,
+    title: 'Home', area: 'P2', grade: 'launch_home', music: null, key: { strength: 1.6, color: 0xd8e0ff },
     cast: { bub: { at: 'mk_bub_back' }, neighbour: { at: 'mk_door_out' }, chase: { at: 'mk_chase_out', def: 'chase_young' }, luke: { at: 'mk_luke_out', def: 'luke_young' } },
     start: { cut: true },
     shots: [
       // glass shatters; through the hole, a face in blue light; the door gives
-      { cam: { type: 'static', at: w(1.15, 1.2, 1.55), look: w(0.02, 1.32, 3.15), lens: 35, handheld: 0.35 }, dur: 2.7, focus: w(0.1, 1.4, 3.2),
-        actions: [{ t: 0, who: 'neighbour', do: 'pose', name: 'stand' }, { t: 0.1, who: 'neighbour', do: 'gesture', name: 'punch' }, { t: 1.25, do: 'call', hook: 'p2.door' },
-          { t: 1.5, who: 'neighbour', do: 'walkTo', path: ['mk_nb_in', w(1.7, 0, 2.85), 'mk_nb_tackle'], speed: 0.75 }],
+      { cam: { type: 'static', at: w(0.62, 1.28, 1.2), look: w(0.0, 1.42, 3.2), lens: 32, handheld: 0.35 }, dur: 2.7, focus: w(0.0, 1.5, 3.5),
+        actions: [{ t: 0, who: 'neighbour', do: 'pose', name: 'stand' }, { t: 0.1, who: 'neighbour', do: 'gesture', name: 'punch', to: w(0.02, 1.45, 3.2), hand: 'l' }, { t: 1.25, do: 'call', hook: 'p2.door' },
+          { t: 1.5, who: 'neighbour', do: 'walkTo', path: ['mk_nb_in', w(1.6, 0, 2.5), 'mk_nb_tackle'], speed: 0.75 }],
         cues: [{ t: 0.3, call: 'p2.glass' }, { t: 0.3, shake: 0.3, dur: 0.4 }] },
       // Bub, backed into the corner
       { cam: { type: 'close', who: 'bub', dist: 1.15, lens: 60, handheld: 0.3 }, dur: 2.2, focus: 'bub',
-        actions: [{ t: 0, who: 'bub', do: 'lookAt', at: 'neighbour' }, { t: 0.1, who: 'bub', do: 'emote', name: 'afraid' }, { t: 0.4, who: 'bub', do: 'gesture', name: 'cover_mouth' }] },
+        actions: [{ t: 0, who: 'bub', do: 'lookAt', at: 'neighbour' }, { t: 0.1, who: 'bub', do: 'emote', name: 'afraid' }, { t: 0.5, who: 'bub', do: 'turnTo', to: 'neighbour', dur: 0.8 }] },
       // he comes on, phone out at arm's length toward her face; headlights begin to sweep the room
       { cam: { type: 'ots', over: 'bub', on: 'neighbour', side: 'left', dist: 0.9, handheld: 0.5 }, focus: 'neighbour', hold: 0.2,
         actions: [{ t: 0.1, who: 'neighbour', do: 'gesture', name: 'point', to: 'bub.eyes', hold: true }, { t: 0.2, who: 'neighbour', do: 'emote', name: 'smile' }, { t: 0.2, who: 'neighbour', do: 'lookAt', at: 'bub' }],
@@ -780,7 +829,7 @@
         actions: [{ t: 0, who: 'chase', do: 'show' }, { t: 0, who: 'chase', do: 'place', at: w(0.05, 0, 3.9), yaw: 1.2 }, { t: 0.02, who: 'chase', do: 'runTo', at: w(2.45, 0, 2.45) }, { t: 0.62, who: 'chase', do: 'gesture', name: 'tackle' }],
         cues: [{ t: 0, sfx: 'door_slam', at: w(0, 1, 3.2), vol: 0.8 }] },
       // through the coffee table
-      { cam: { type: 'static', at: w(4.35, 0.42, 2.25), look: w(3.1, 0.35, 1.1), lens: 24, handheld: 0.55 }, dur: 2.2, focus: w(3.1, 0.4, 1.2),
+      { cam: { type: 'static', at: w(4.0, 0.55, 2.75), look: w(3.05, 0.5, 1.2), lens: 24, handheld: 0.55 }, dur: 2.2, focus: w(3.1, 0.4, 1.2),
         actions: [{ t: 0, do: 'call', hook: 'p2.impact' }, { t: 0.7, who: 'chase', do: 'gesture', name: 'punch' }, { t: 1.3, who: 'chase', do: 'gesture', name: 'punch' }],
         cues: [{ t: 0, shake: 0.7, dur: 0.5 }, { t: 0.85, sfx: 'punch', at: w(3.15, 0.4, 1.15), vol: 1 }, { t: 1.45, sfx: 'punch', at: w(3.15, 0.4, 1.15), vol: 1 }] },
       // Luke drags Bub back, away from it, toward the kitchen
@@ -789,7 +838,7 @@
           { t: 0.45, who: 'luke', do: 'gesture', name: 'hand_on_shoulder', to: 'bub', hold: true }, { t: 0.6, who: 'bub', do: 'walkTo', path: [w(4.2, 0, 0.3), 'mk_bub_pulled'], speed: 1.7 },
           { t: 0.65, who: 'luke', do: 'walkTo', path: [w(3.95, 0, 0.1), w(3.55, 0, -2.3)], speed: 1.7 }, { t: 1.0, who: 'bub', do: 'lookAt', at: 'chase' }, { t: 1.2, who: 'luke', do: 'lookAt', at: 'chase' }] },
       // Chase gets up, breathing hard, blood on his knuckles
-      { cam: { type: 'static', at: w(4.4, 1.05, 2.45), look: w(3.25, 1.2, 1.0), lens: 35 }, dur: 3.4, focus: 'chase',
+      { cam: { type: 'static', at: w(2.9, 0.75, -1.1), look: w(3.2, 1.42, 1.2), lens: 30, handheld: 0.2 }, dur: 3.4, focus: 'chase',
         actions: [{ t: 0.2, do: 'call', hook: 'p2.up' }, { t: 0.3, who: 'chase', do: 'emote', name: 'exhausted' }, { t: 1.1, who: 'chase', do: 'lookAt', at: 'chase.hand_r' },
           { t: 0.4, who: 'luke', do: 'gesture', name: null }, { t: 0.5, who: 'bub', do: 'turnTo', to: 0, dur: 0.6 }, { t: 0.9, who: 'luke', do: 'walkTo', at: w(2.3, 0, 0.75), speed: 1.2 },
           { t: 2.1, who: 'chase', do: 'lookAt', at: 'bub' }, { t: 2.4, who: 'chase', do: 'walkTo', path: [w(3.9, 0, 0.2), w(3.0, 0, -2.25)], speed: 1.5 }],
@@ -803,7 +852,7 @@
       { cam: { type: 'ots', over: 'bub', on: 'chase', push: 0.08 }, focus: 'chase', hold: 0.4,
         lines: [{ who: 'chase', text: 'Don\'t look at anyone\'s hands. Anyone\'s. Car. Now.', emote: 'tense', pause: 0.3, to: 'bub' }] },
       // out into the headlights; his phone still scrolling on the floor
-      { cam: { type: 'static', at: w(3.55, 0.3, 2.7), look: w(0.9, 0.95, 2.1), lens: 28 }, dur: 5.2, focus: { rack: [w(2.55, 0.02, 2.15), 'bub'], at: 1.6, dur: 1.8 },
+      { cam: { type: 'static', at: w(3.12, 0.2, 2.36), look: w(0.1, 0.9, 3.0), lens: 28 }, dur: 5.2, focus: { rack: [w(2.6, 0.02, 2.5), 'bub'], at: 1.6, dur: 1.8 },
         actions: [{ t: 0, who: 'chase', do: 'detach' }, { t: 0.1, who: 'chase', do: 'gesture', name: 'hand_on_shoulder', to: 'bub', hold: true },
           { t: 0.1, who: 'luke', do: 'walkTo', path: [w(1.4, 0, 2.6), w(0.1, 0, 3.9)], speed: 2.0 }, { t: 0.3, who: 'bub', do: 'walkTo', path: [w(2.4, 0, -1.2), w(1.15, 0, -0.5), w(1.05, 0, 2.5), w(0.1, 0, 3.8)], speed: 2.0 },
           { t: 0.4, who: 'chase', do: 'walkTo', path: [w(2.2, 0, -1.4), w(0.9, 0, -0.6), w(0.8, 0, 2.4), w(0.15, 0, 3.6)], speed: 2.0 }] },

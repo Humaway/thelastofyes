@@ -10,14 +10,14 @@
 //   supply pad x -4..8 z -2..8: workbench, glinting pickups, an artifact, a lanyard, a training module, a Sales Tip
 //   traversal lane x -12..-2: low wall (vault) · 1.5 m block (climb, drop) · 2.1 m wall (marked ledge) · ladder up a 4 m
 //     platform · plank carried across a 2.5 m gap · drop down · portable ladder to a 3 m roof · squeeze gap
-//   west: a 3.2 m wall (two-person boost) and a sunken pool (deep water; push the pallet across for Chloe)
+//   west: a 3.2 m wall (two-person boost) and a flooded tank (deep water; push the pallet across for Chloe)
 //   east: tall grass, a dark shed, cover; Scrollers, a Clicker, a Lurker, a smuggler patrol and a guard facing away
 // ============================================================================
 (() => {
   const SPOTS = {
     start: [[0, 0, 2], Math.PI], bench: [[3.3, 0, 1], Math.PI / 2], trav: [[-8, 0, -1.5], Math.PI],
     ladder: [[-10.5, 0, -20.4], Math.PI], plank: [[-6.4, 4, -24.2], Math.PI], portable: [[-1, 0, -34.5], Math.PI],
-    squeeze: [[-8, 0, -44.6], Math.PI], boost: [[-17, 0, -28.3], Math.PI], water: [[-21, 0, -4.4], Math.PI + 0.5],
+    squeeze: [[-8, 0, -44.6], Math.PI], boost: [[-17, 0, -28.3], Math.PI], water: [[-21, 0, -4.2], Math.PI + 0.3],
     grass: [[14, 0, -18.5], Math.PI], listen: [[26, 0, -11.2], Math.PI + 0.15], takedown: [[8, 0, -11.9], Math.PI],
     range: [[18, 0, -19.5], Math.PI + 0.2],
   };
@@ -32,15 +32,18 @@
       Build.hemi({ sky: 0xb0c4d8, ground: 0x5a4c3a, intensity: 0.55 });
       Build.sun({ dir: [-0.55, -1, -0.3], color: 0xffe4c4, intensity: 2.7, area: 48 });
       const conc = Tex.mat('concrete'), brick = Tex.mat('brick'), block = Tex.mat('render', { color: 0xb8b0a4 });
-      // ground, with a sunken pool at x -32..-20, z -20..-6
-      Build.floor(-40, -60, -32, 20, conc); Build.floor(-20, -60, 40, 20, conc);
-      Build.floor(-32, -6, -20, 20, conc); Build.floor(-32, -60, -20, -20, conc);
-      Build.floor(-32, -20, -20, -6, Tex.mat('tiles', { color: 0x8aa0a0 }), { y: -1.7 });
-      for (const [w, d, x, z] of [[12.6, 0.3, -26, -5.85], [12.6, 0.3, -26, -20.15], [0.3, 14, -32.15, -13], [0.3, 14, -19.85, -13]]) Build.box(w, 1.7, d, conc, { pos: [x, -1.7, z] });
-      Build.water({ x1: -32, z1: -20, x2: -20, z2: -6, y: -0.15 });
-      A.water({ box: [-32, -20, -20, -6], y: -0.15, deep: true });
-      A.data.pallet = A.pallet({ at: [-22.2, -0.15, -8.2], water: [-32, -20, -20, -6], y: -0.15, to: [-30.4, -0.15, -18.6],
-        onArrive: () => { const ch = Game.who('chloe'); if (A.data.pallet.rider === ch) { A.data.pallet.ride(null); ch.root.position.copy(A.w([-31, 0, -21.2])); } } });
+      // ground, and a flooded tank at x -32..-20, z -20..-6 (1.4 m walls; deep water, the pallet floats in it)
+      Build.floor(-40, -60, 40, 20, conc);
+      for (const [w, d, x, z] of [[12.6, 0.3, -26, -5.85], [12.6, 0.3, -26, -20.15], [0.3, 14, -32.15, -13], [0.3, 14, -19.85, -13]]) Build.box(w, 1.4, d, block, { pos: [x, 0, z] });
+      Build.water({ x1: -32, z1: -20, x2: -20, z2: -6, y: 1.25 });
+      A.water({ box: [-32, -20, -20, -6], y: 1.25, deep: true });
+      A.data.pallet = A.pallet({ at: [-22.2, 1.25, -8.2], water: [-32, -20, -20, -6], y: 1.25, to: [-30.4, 1.25, -18.6],
+        onArrive: () => {         // Chloe steps off onto the far wall and follows again
+          const ch = Game.who('chloe'), P = A.data.pallet;
+          if (P.rider !== ch) return;
+          P.ride(null); ch.root.position.copy(A.w([-30.4, 1.4, -20.15]));
+          AI.list.find(a => a.char === ch).setBehaviour('follow');
+        } });
       // yard edge
       for (const [x, z, yaw, len] of [[-40, 20, 0, 80], [-40, -60, 0, 80], [-40, -60, -Math.PI / 2, 80], [40, 20, Math.PI / 2, 80]]) Build.prop('fence', { kind: 'colorbond', pos: [x, 0, z], yaw, length: len, color: 0x6a746c, worn: 0.4 });
       for (const [x, z, s] of [[-36, 12, 1.1], [34, 14, 0.9], [36, -54, 1.2], [-37, -52, 1]]) Build.tree('gum', { pos: [x, 0, z], scale: s, seed: x * 7 + z });
@@ -122,8 +125,10 @@
       : { revolver: 1, revolver_ammo: 8, shotgun: 1, shotgun_ammo: 3, pipe: 1, medkit: 1, shiv: 2, bottle: 1, pillow: 1, ringtone: 1, vape: 1, cloth: 2, alcohol: 1, tape: 2, sim: 1, battery: 1, scrap: 1, bars: 9 };
     for (const k in kit) Play.give(k, kit[k]);
     Play.equip(chloeP ? 'pistol' : 'revolver');
+    const spot = PARAMS.get('spot') || 'start';
     if (!chloeP) AI.companion(chloe, { role: 'chloe' });
-    CONTENT.dev.playSpot(PARAMS.get('spot') || 'start');
+    CONTENT.dev.playSpot(spot);
+    if (spot === 'water' && !chloeP) { AI.list.find(a => a.char === chloe).setBehaviour('scripted'); G.A.data.pallet.ride(chloe); }
     G.control(true);
     if (PARAMS.get('enemies') === '0') return;
     const w = p => G.A.w(p), at = (p, yaw) => ({ pos: w(p), yaw });

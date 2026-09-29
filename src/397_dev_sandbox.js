@@ -4,7 +4,8 @@
 //   north: the yard — wrecked cars, a low wall, tall grass, two Scrollers, a Lurker behind a car, a dark garage with two
 //          Clickers, a Bloatware in the loading court
 //   south: the street — two fibro houses, sandbags, barriers, a skip; four Door Knockers (patrol, guard, flank)
-//   ?dev&test=sandbox[&fight=infected|humans|scrollers|lurker|clickers|bloatware|calm]   Chase + Chloe at the gate (default: all)
+//   ?dev&test=sandbox[&fight=infected|humans|scrollers|lurker|clickers|bloatware|factions|calm]   Chase + Chloe at the gate
+//        (default: all; factions = one of each human faction guarding the street)
 //   CONTENT.dev.sbCam(x, y, z, tx, ty, tz, lens)   fixed camera in area-local coordinates (null = gameplay camera)
 //   CONTENT.dev.sbAt(x, z, yaw)                   move the player (area-local)
 //   CONTENT.dev.sbState()                         one-line summary of every agent (headless checks)
@@ -105,10 +106,11 @@ CONTENT.levels.SANDBOX = {
   SPAWNS.infected = [...SPAWNS.scrollers, ...SPAWNS.lurker, ...SPAWNS.clickers, ...SPAWNS.bloatware];
   SPAWNS.all = [...SPAWNS.infected, ...SPAWNS.humans];
   SPAWNS.calm = [];
+  SPAWNS.factions = ['comms', 'smuggler', 'doorknocker', 'retreat', 'bandit', 'landline'].map((faction, i) => ['human', [-15 + i * 6, 34 - (i % 2) * 6], Math.PI, { faction, behaviour: 'guard' }]);
 
   CONTENT.dev.sandbox = async G => {
     await G.area('SANDBOX');
-    const fight = PARAMS.get('fight') || 'all', human = fight === 'humans';
+    const fight = PARAMS.get('fight') || 'all', human = fight === 'humans' || fight === 'factions';
     const chase = G.actor('chase', 'chase', human ? 'mk_street' : 'mk_start'), chloe = G.actor('chloe', 'chloe', 'mk_chloe', human ? 0 : Math.PI);
     G.player(chase, { combat: true, hud: true, canCrouch: true, canJump: true, weapons: ['revolver', 'shotgun'], melee: 'fists', stats: 'chase' });
     for (const [item, n] of [['revolver', 1], ['shotgun', 1], ['revolver_ammo', 12], ['shotgun_ammo', 4], ['shiv', 1], ['bottle', 2], ['brick', 1], ['pillow', 1]]) Play.give(item, n);

@@ -249,11 +249,11 @@ const Kit = (() => {
     const c = S.c, inv = S.inv, f = W.f, rx = -f.z, rz = f.x;
     const guns = () => inv.weapons.filter(w => CONTENT.upgrades[w]);
     let gi = Math.max(0, guns().indexOf(inv.weapon)), row = 0, tinker = 0, gunMesh = null, shown = null;
-    const top = W.at.clone(); top.y += 0.93;
+    const top = W.at.clone(); top.y += 0.9;
     const p0 = c.root.position.clone(), yaw0 = c.yaw;
     // close-up from over Chase's right side, looking down at the gun on the bench (the upgrade list sits screen-left)
-    const camPos = top.clone().addScaledVector(f, 0.5).addScaledVector(new V3(rx, 0, rz), -0.95); camPos.y += 0.72;
-    const camTgt = top.clone().addScaledVector(f, 0.02).addScaledVector(new V3(rx, 0, rz), 0.2);
+    const camPos = top.clone().addScaledVector(f, 0.62).addScaledVector(new V3(rx, 0, rz), -1.1); camPos.y += 0.85;
+    const camTgt = top.clone().addScaledVector(f, 0.05).addScaledVector(new V3(rx, 0, rz), 0.22);
     Audio.sfx('metal_hit', { pos: top, vol: 0.3 });
     const state = () => {
       const gs = guns(), w = gs[gi], bars = inv.items.bars || 0, have = inv.upgrades[w] || [];

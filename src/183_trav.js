@@ -77,13 +77,14 @@ const Trav = (() => {
     S.start({
       name: 'carry', A: it.A, move: true, speed: 2.1,
       update() {
-        // on the right shoulder, pointing forward and slightly down
-        c.point('shoulder_r', _a); _a.sub(it.A.origin);
+        // held at the right hip in both hands, angled out to the right so it reads past him; the far end a little up
         U.fwd(c.yaw, _f);
-        g.position.set(_a.x - _f.x * it.len * 0.28 - _f.z * 0.08, _a.y + 0.06 - (it.kind === 'ladder' ? 0.25 : 0), _a.z - _f.z * it.len * 0.28 + _f.x * 0.08);
-        g.rotation.set(it.kind === 'plank' ? 0.08 : -Math.PI / 2 + 0.08, c.yaw, it.kind === 'ladder' ? Math.PI / 2 : 0, 'YXZ');
-        if (it.kind === 'ladder') g.position.addScaledVector(_f, it.len * 0.5);
-        const T = c.ikT || (c.ikT = {}); T.R = { p: c.point('shoulder_r', new V3()).addScaledVector(_f, 0.12).setY(_a.y + it.A.origin.y + 0.1), w: 0.8 };
+        const rx = -_f.z, rz = _f.x, p = c.point('chest', _a).addScaledVector(_f, 0.3); p.x += rx * 0.12; p.z += rz * 0.12; p.y -= 0.34;
+        const T = c.ikT || (c.ikT = {});
+        T.L = { p: new V3(p.x - rx * 0.2, p.y, p.z - rz * 0.2), w: 0.9 }; T.R = { p: new V3(p.x + rx * 0.2, p.y, p.z + rz * 0.2), w: 0.9 };
+        const yaw = c.yaw - 0.16, q = it.kind === 'plank' ? it.len / 2 - 0.55 : -0.55;   // plank pivots at its middle, ladder at its feet
+        g.position.copy(p).addScaledVector(U.fwd(yaw, _b), q).sub(it.A.origin); g.position.y += Math.max(0, q) * 0.08 - 0.03;
+        g.rotation.set(it.kind === 'plank' ? -0.08 : Math.PI / 2 - 0.08, yaw, 0, 'YXZ');
         if (this.shut) return true;    // a frame after the key, so the same E can't pick it straight back up
         const si = spotNear(S, it);
         S.ask(si >= 0 ? `e – place ${it.kind}` : `e – put down ${it.kind}`);
@@ -126,11 +127,14 @@ const Trav = (() => {
   }
 
   // ---- pallets -----------------------------------------------------------------------------------------------------
+  // the pallet is a solid box in the water: the swimmer bumps into it and, walking on, shoves it ahead (steering with it)
+  const PH = 0.58;
   function pallet(A, S, o) {
     const g = Build.prop('pallet', { pos: o.at, dynamic: true, solid: false, blob: false });
     const w = o.water, y = A.origin.y + (o.y || 0);
     const P = { A, kind: 'pallet', mesh: g, pos: A.w(o.at), to: A.w(o.to), y, docked: false, rider: null, onArrive: o.onArrive, t: 0,
-      x1: A.origin.x + Math.min(w[0], w[2]) + 0.7, x2: A.origin.x + Math.max(w[0], w[2]) - 0.7, z1: A.origin.z + Math.min(w[1], w[3]) + 0.7, z2: A.origin.z + Math.max(w[1], w[3]) - 0.7 };
+      box: World.addBox([0, 0, 0], [0, 0, 0], { walk: false, sight: false, cam: false, surface: 'wood' }),
+      x1: A.origin.x + Math.min(w[0], w[2]) + PH, x2: A.origin.x + Math.max(w[0], w[2]) - PH, z1: A.origin.z + Math.min(w[1], w[3]) + PH, z2: A.origin.z + Math.max(w[1], w[3]) - PH };
     P.ride = c => { P.rider = c; };
     items.push(P);
     return P;
@@ -138,27 +142,25 @@ const Trav = (() => {
   function palletTick(S, P, dt) {
     P.t += dt;
     const c = S.c;
-    if (!P.docked && c && S.water && S.water.deep) {
-      const p = c.root.position, dx = P.pos.x - p.x, dz = P.pos.z - p.z, d = Math.hypot(dx, dz);
-      if (d < 1.15 && S.speed > 0.2) {
-        U.fwd(c.yaw, _f);
-        if (_f.x * dx + _f.z * dz > 0) {
-          const push = (1.15 - d) + S.speed * dt * 0.1;
-          P.pos.x = cl(P.pos.x + dx / d * push, P.x1, P.x2); P.pos.z = cl(P.pos.z + dz / d * push, P.z1, P.z2);
-          if ((P.creak = (P.creak || 0) - dt) <= 0) { P.creak = 1.4; Audio.sfx('water_splash', { pos: P.pos, vol: 0.25 }); }
-        }
+    if (!P.docked && c && S.water && S.water.deep && S.speed > 0.2) {
+      const p = c.root.position, dx = P.pos.x - p.x, dz = P.pos.z - p.z, gap = Math.max(Math.abs(dx), Math.abs(dz)) - PH, d = Math.hypot(dx, dz);
+      U.fwd(c.yaw, _f);
+      if (gap < 0.42 && (_f.x * dx + _f.z * dz) / d > 0.35) {
+        const v = S.speed * 0.9 * dt, side = dx * _f.z - dz * _f.x, k = Math.min(1, 5 * dt);   // ahead, and drawn in front of him
+        P.pos.x = cl(P.pos.x + _f.x * v - _f.z * side * k, P.x1, P.x2); P.pos.z = cl(P.pos.z + _f.z * v + _f.x * side * k, P.z1, P.z2);
+        if ((P.creak = (P.creak || 0) - dt) <= 0) { P.creak = 1.4; Audio.sfx('water_splash', { pos: P.pos, vol: 0.25 }); Audio.sfx('creak', { pos: P.pos, vol: 0.2 }); }
       }
       if (U.dist2(P.pos, P.to) < 1.3) {
         P.docked = true; P.pos.set(P.to.x, P.pos.y, P.to.z);
-        const wb = World.addBox([P.pos.x - 0.6, P.y - 0.4, P.pos.z - 0.5], [P.pos.x + 0.6, P.y + 0.14, P.pos.z + 0.5], { block: false, sight: false, cam: false, surface: 'wood' });
-        wb.area = P.A.id;
+        Object.assign(P.box, { block: false, walk: true });
         if (P.onArrive) P.onArrive(Game.G);
       }
     }
     const bob = P.docked ? 0 : Math.sin(P.t * 1.7) * 0.025;
+    P.box.min.set(P.pos.x - PH, P.y - 0.6, P.pos.z - PH); P.box.max.set(P.pos.x + PH, P.y + 0.14, P.pos.z + PH);
     P.mesh.position.set(P.pos.x - P.A.origin.x, P.y - 0.02 + bob - P.A.origin.y, P.pos.z - P.A.origin.z);
     P.mesh.rotation.set(Math.sin(P.t * 1.3) * 0.02, P.mesh.rotation.y, Math.sin(P.t * 1.1 + 1) * 0.02);
-    if (P.rider) { P.rider.root.position.set(P.pos.x, P.y + 0.14 + bob, P.pos.z); P.rider.setMove(0); }
+    if (P.rider) { P.rider.root.position.set(P.pos.x, P.y + 0.14 + bob, P.pos.z); P.rider.setMove(0, { crouch: true }); }
   }
 
   // ---- context detection --------------------------------------------------------------------------------------------
@@ -329,14 +331,14 @@ const Trav = (() => {
     let k = 0, mid = false;
     Audio.sfx('breath_in', { pos: a, vol: 0.3 });
     S.start({
-      name: 'squeeze', root: true, A: s.A, cam: { dist: 1.25, side: 0.32, fov: 58, yaw: dir - 1.2, pitch: 0.08 },
+      name: 'squeeze', root: true, A: s.A, cam: { dist: 1.7, side: 0.12, fov: 55, yaw: dir + 0.15, pitch: 0.1 },
       update(dt) {
         const p = c.root.position, input = S.ctl ? Math.hypot(Input.move.x, Input.move.y) : 0;
         if (this.t < 0.4) { const q = cl(this.t / 0.4); p.x = U.lerp(p.x, a.x, q); p.z = U.lerp(p.z, a.z, q); }
-        else k = Math.min(1, k + (input > 0.2 ? 0.5 : 0) * dt / len);
+        else k = Math.min(1, k + (input > 0.2 ? 0.7 : 0) * dt / len);
         c.yaw = U.angleDamp(c.yaw, dir - Math.PI / 2, 8, dt);
         if (this.t >= 0.4) p.lerpVectors(a, b, k);
-        c.setMove(input > 0.2 && this.t >= 0.4 && k < 1 ? 0.5 : 0, { strafe: [-1, 0] });
+        c.setMove(input > 0.2 && this.t >= 0.4 && k < 1 ? 0.7 : 0, { strafe: [-1, 0] });
         if (!mid && k >= 0.5) { mid = true; if (s.mid) s.mid(Game.G); }
         if (k >= 1) return true;
       },
@@ -364,26 +366,29 @@ const Trav = (() => {
         const k = t - this.t0;
         lifter.yaw = U.angleDamp(lifter.yaw, yaw, 10, dt); if (k < 1.9) climber.yaw = U.angleDamp(climber.yaw, yaw, 10, dt);
         const L = lifter.root.position, C = climber.root.position;
-        if (k < 0.5) { L.lerp(spotL, 0.2); C.lerp(spotC, 0.2); lifter.setMove(0, { crouch: true }); hands(lifter, spotC.clone().setY(L.y + 0.55), spotC.clone().setY(L.y + 0.62), sm(cl(k / 0.4))); }
-        else if (k < 1.9) {                // boosted up
-          const q = sm(cl((k - 0.5) / 1.2)), fw = sm(cl((k - 1.1) / 0.8));
-          C.y = s.at.y + h * q; C.x = U.lerp(spotC.x, topC.x, fw); C.z = U.lerp(spotC.z, topC.z, fw);
-          lifter.setMove(0, { crouch: q < 0.5 });
-          hands(lifter, C.clone().setY(C.y + 0.1), C.clone().setY(C.y + 0.15), 1 - q);
-          hands(climber, el, er, sm(cl((k - 0.6) / 0.3)) * sm(cl((1.7 - k) / 0.2)));
-          climber.setMove(0, { crouch: q > 0.4 && q < 0.95 });
-          if (k > 0.55 && !this.grunt) { this.grunt = 1; Audio.sfx('breath_in', { pos: C, vol: 0.4 }); }
-        } else if (k < 2.6) {              // turns and reaches down
+        if (k < 0.6) {                     // the lifter crouches and cups his hands; the climber steps in
+          L.lerp(spotL, 0.2); C.lerp(spotC, 0.2);
+          lifter.setMove(0, { crouch: true }); climber.setMove(0);
+          hands(lifter, spotC.clone().setY(L.y + 0.5), spotC.clone().setY(L.y + 0.56), sm(cl(k / 0.4)));
+        } else if (k < 2.2) {              // heaved up to his chest, then she pulls herself over the edge
+          const heave = sm(cl((k - 0.6) / 0.6)), pull = sm(cl((k - 1.25) / 0.6)), fw = sm(cl((k - 1.55) / 0.6));
+          C.y = s.at.y + 1.25 * heave + (h - 1.25) * pull; C.x = U.lerp(spotC.x, topC.x, fw); C.z = U.lerp(spotC.z, topC.z, fw);
+          lifter.setMove(0, { crouch: heave < 0.4 });
+          hands(lifter, spotC.clone().setY(C.y + 0.04), spotC.clone().setY(C.y + 0.1), 1 - sm(cl((k - 1.3) / 0.3)));
+          hands(climber, el, er, sm(cl((k - 0.8) / 0.35)) * (1 - sm(cl((k - 1.9) / 0.25))));
+          climber.setMove(0, { crouch: pull > 0.3 && k < 2.1 });
+          if (k > 0.65 && !this.grunt) { this.grunt = 1; Audio.sfx('breath_in', { pos: C, vol: 0.4 }); }
+        } else if (k < 2.9) {              // turns round, kneels at the edge and reaches down
           climber.ikT = {}; climber.yaw = U.angleDamp(climber.yaw, yaw + Math.PI, 8, dt); climber.setMove(0, { crouch: true });
           lifter.setMove(0);
         } else {                           // pulls the lifter up
-          const q = sm(cl((k - 2.6) / 1.3)), fw = sm(cl((k - 3.2) / 0.8));
-          climber.setMove(0, { crouch: k < 3.8 });
-          hands(climber, L.clone().setY(L.y + 1.9), L.clone().setY(L.y + 1.95), (1 - sm(cl((k - 3.6) / 0.3))) * sm(cl((k - 2.6) / 0.3)));
-          hands(lifter, el, er, sm(cl((k - 2.6) / 0.3)) * (1 - fw));
-          L.y = s.at.y + h * sm(cl((k - 2.8) / 0.8)); L.x = U.lerp(spotL.x, topL.x, fw); L.z = U.lerp(spotL.z, topL.z, fw);
+          const q = sm(cl((k - 2.9) / 1.3)), fw = sm(cl((k - 3.5) / 0.8));
+          climber.setMove(0, { crouch: k < 4.1 });
+          hands(climber, L.clone().setY(L.y + 1.9), L.clone().setY(L.y + 1.95), (1 - sm(cl((k - 3.9) / 0.3))) * sm(cl((k - 2.9) / 0.3)));
+          hands(lifter, el, er, sm(cl((k - 2.9) / 0.3)) * (1 - fw));
+          L.y = s.at.y + h * sm(cl((k - 3.1) / 0.8)); L.x = U.lerp(spotL.x, topL.x, fw); L.z = U.lerp(spotL.z, topL.z, fw);
           lifter.setMove(0, { crouch: q > 0.3 && q < 0.9 });
-          if (k >= 3.9) return true;
+          if (k >= 4.3) return true;
         }
       },
       end() { lifter.ikT = {}; climber.ikT = {}; if (agent) agent.setBehaviour('follow'); },

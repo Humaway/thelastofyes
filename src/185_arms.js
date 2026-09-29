@@ -333,9 +333,9 @@ const Arms = (() => {
     const on = S.throwAim;
     if (!arc) {
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(64 * 3), 3));
-      arc = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.055, transparent: true, opacity: 0.75, depthTest: false, depthWrite: false, map: tex('dot'), alphaTest: 0.01 }));
+      arc = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.075, transparent: true, opacity: 0.85, depthTest: false, depthWrite: false, map: tex('dot'), alphaTest: 0.01 }));
       arc.frustumCulled = false; arc.renderOrder = 10;
-      ring = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.34, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }));
+      ring = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.34, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthTest: false, depthWrite: false }));
       ring.renderOrder = 10;
       Engine.scene.add(arc, ring);
     }
@@ -497,7 +497,7 @@ const Arms = (() => {
     const cv = document.createElement('canvas'), N = 64; cv.width = cv.height = N;
     const x = cv.getContext('2d');
     const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
-    if (kind === 'dot') { g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.45, 'rgba(255,255,255,.9)'); g.addColorStop(0.6, 'rgba(255,255,255,0)'); }
+    if (kind === 'dot') { g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.38, 'rgba(255,255,255,.95)'); g.addColorStop(0.5, 'rgba(20,20,20,.45)'); g.addColorStop(0.85, 'rgba(0,0,0,0)'); }   // dark rim: reads on sky
     else { g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.4, 'rgba(255,255,255,.5)'); g.addColorStop(1, 'rgba(255,255,255,0)'); }
     x.fillStyle = g; x.fillRect(0, 0, N, N);
     if (kind === 'flame') {
@@ -554,7 +554,10 @@ const Arms = (() => {
   // ---- hands: props, aim pose and IK -----------------------------------------------------------------------------
   function hands(S, dt) {
     const c = S.c, inv = S.inv, w = inv.weapon, g = w && GUN[w];
-    if (S.act && ['takedown', 'grab', 'melee', 'death', 'bench', 'backpack', 'carry', 'ladder', 'climb', 'vault', 'boost', 'squeeze', 'drop'].includes(S.act.name)) return;
+    if (S.act && (!S.act.move || S.act.name === 'carry')) {           // traversal, carrying, bench, backpack: hands free
+      if (!['takedown', 'grab', 'death'].includes(S.act.name)) { hold(c, 'r', null); hold(c, 'l', null); }
+      return;
+    }
     const gunOut = g && (S.aim || reloading || gunT < 2.2);
     const bow = gunOut && g.bow;
     hold(c, 'l', bow ? 'bow' : null);

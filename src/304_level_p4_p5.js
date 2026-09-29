@@ -249,7 +249,7 @@
     build(A) {
       const D = A.data, r = U.rng(44);
       D.hazard = [];
-      Build.hemi({ sky: 0x28324a, ground: 0x1a0c06, intensity: 0.75 });
+      Build.hemi({ sky: 0x2e3c60, ground: 0x1a0c06, intensity: 1.0 });   // cool night fill under the firelight
       sky(A, 0x24120a, 0x050303, 0x52240e);
       crashSite(A); pileUp(A); forecourt(A, r); causeway(A);
       // the one shadow caster: the pile-up fire throwing everyone's shadow across the forecourt
@@ -378,11 +378,11 @@
           { t: 2.6, who: 'chase', do: 'pose', name: 'kneel_one' }],
         cues: [{ t: 0.3, sfx: 'breath_in', at: 'chase', vol: 0.8 }] },
       // he lifts her up; on her wrist a red dot rises through the skin like a notification: 1, then 4
-      { cam: { type: 'static', at: T6(-1.9, 1.05, 2.9), look: T6(-0.8, 0.6, 1.3), lens: 45 }, dur: 3.0, focus: 'bub',
+      { cam: { type: 'static', at: T6(-0.55, 1.0, 3.9), look: T6(-0.62, 0.8, 1.4), lens: 35 }, dur: 3.0, focus: 'bub',
         actions: [{ t: 0.1, do: 'call', hook: 'p6.lift' }, { t: 1.2, who: 'bub', do: 'lookAt', at: 'bub.hand_r' }, { t: 1.4, who: 'chase', do: 'lookAt', at: 'bub.hand_r' }],
         cues: [{ t: 0.4, sfx: 'gasp', at: 'bub', vol: 0.7 }] },
       { cam: { type: 'extreme_close', who: 'bub', part: 'badge', lens: 85 }, dur: 3.4, focus: 'bub.hand_r',
-        actions: [{ t: 0.5, who: 'bub', do: 'badge', value: 1, where: 'wrist_r' }, { t: 2.1, who: 'bub', do: 'badge', value: 4, where: 'wrist_r' }],
+        actions: [{ t: 0.5, who: 'bub', do: 'badge', value: 1, where: 'wrist_r' }, { t: 0.55, do: 'call', hook: 'p6.badge' }, { t: 2.1, who: 'bub', do: 'badge', value: 4, where: 'wrist_r' }],
         cues: [{ t: 0.5, sfx: 'notif_chime', at: 'bub', vol: 0.3 }, { t: 2.1, sfx: 'notif_chime', at: 'bub', vol: 0.4 }] },
       { cam: { type: 'static', at: T6(-0.15, 0.72, 2.6), look: 'bub.eyes', lens: 50, push: 0.06 }, hold: 0.3, focus: 'bub',
         actions: [{ t: 0.15, who: 'chase', do: 'gesture', name: 'hold_hands', to: 'bub', hold: true }, { t: 0.6, who: 'bub', do: 'lookAt', at: 'chase' }],
@@ -433,6 +433,13 @@
     const chase = G.who('chase'), luke = G.who('luke'), t = G.who('tackler');
     chase.pose('stand', { dur: 0.5 }); chase.emote('exhausted'); luke.lookAt(chase);
     t.pose('dead', { dur: 0.6 }); t.lookAt(null);
+  };
+  H['p6.badge'] = G => {   // turn the new Badge in its skin so its number stands upright for the insert (square-on, level camera)
+    const m = G.who('bub').badgeObj?.mesh; if (!m) return;
+    const q = m.getWorldQuaternion(new THREE.Quaternion()), n = V(0, 0, 1).applyQuaternion(q), y = V(0, 1, 0).applyQuaternion(q);
+    if (Math.abs(n.y) > 0.95) return;
+    const up = V(0, 1, 0).addScaledVector(n, -n.y).normalize();
+    m.rotateZ(Math.atan2(y.clone().cross(up).dot(n), y.dot(up)));
   };
   H['p6.lift'] = G => { const bub = G.who('bub'); bub.emote('afraid'); bub.gesture('hand_over', { to: G.who('chase').point('chest'), hold: true }); };
   H['p6.carry'] = G => {

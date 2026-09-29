@@ -1,6 +1,7 @@
 // ============================================================================
 // Barks (spec §17) — CONTENT.barks[set][category] = [lines], played through Dialogue.bark by AI. Owned by: systems (AI).
-// Categories used by AI: enemies spot · search · combat · flank · death (a friend went down) · plead (wounded, cornered);
+// Categories used by AI: enemies spot · search · combat · flank · death (a friend went down) · plead (wounded, cornered) ·
+// flight (the Retreat spotting Chloe as the player);
 // Scrollers idle · chase; Chloe callout (enemy on Chase's left) · behind · down · supplies · offer · gross · clicker ·
 // rescue · nice · stealth · stealthInfected; Chase stealth · behind · follow · reload · kill · check. Chase's set reads G.flags.saidChloe:
 // from scene 6.10 on he uses her name and never says "Trainee" again.
@@ -46,10 +47,9 @@ Object.assign(CONTENT.speakers, {
   };
   B.retreat = {
     speaker: 'retreat',
-    spot: ['Team, eyes up.'],
+    spot: ['Team, eyes up.', 'Breach in Breakout Room B!'],
     search: ["Let's circle back to the kitchen.", 'Touch base with the east wing.'],
     combat: ['Synergy, people!', 'Take it offline.'],
-    breach: ['Breach in Breakout Room B!'],
     flight: ["She's a flight risk!"],
   };
   B.comms = {
