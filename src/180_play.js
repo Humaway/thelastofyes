@@ -125,7 +125,7 @@ const Play = (() => {
   function move(dt) {
     const c = S.c, p = S.p, a = S.act, pos = c.root.position;
     if (a && a.root) { S.speed = 0; return; }
-    const free = !a || a.move;
+    const free = !a || !!a.move;
     const ctl = S.ctl && free;
     const mx = ctl ? Input.move.x : 0, my = ctl ? Input.move.y : 0;
     const mag = Math.min(1, Math.hypot(mx, my));
@@ -210,7 +210,7 @@ const Play = (() => {
     for (const z of zones) if (pos.x >= z.x1 && pos.x <= z.x2 && pos.z >= z.z1 && pos.z <= z.z2) { if (z.kind === 'dark') dark = Math.max(dark, z.amount); else if (z.kind === 'grass') grass = true; }
     S.vis = Arms.inSmoke(pos) ? 0 : U.clamp((1 - dark) * (grass ? (S.crouch ? 0.25 : 0.7) : 1));
     // Airplane Mode (hold Q)
-    S.listenOn = S.ctl && combat() && Input.down('listen') && !S.aim && !S.throwAim && (!S.act || S.act.move) && !(S.water && S.water.deep);
+    S.listenOn = S.ctl && combat() && Input.down('listen') && !S.aim && !S.throwAim && (!S.act || !!S.act.move) && !(S.water && S.water.deep);
     S.listen = U.damp(S.listen, S.listenOn ? 1 : 0, S.listenOn ? 6 : 4, dt);
     silhouettes(dt);
     postFx();

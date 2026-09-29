@@ -36,7 +36,7 @@ const Arms = (() => {
   let gunT = 9, cool = 0, reloading = null, draw = 0, scope = 0, assist = null, swayT = 0, fHold = null, throwAnim = 0;
   const proj = [], fx = [], hazards = [];
   let arc = null, ring = null;
-  const _a = new V3(), _b = new V3(), _d = new V3(), _up = new V3(0, 1, 0);
+  const _a = new V3(), _b = new V3(), _d = new V3(), _up = new V3(0, 1, 0), _m = new THREE.Matrix4();
   const sm = U.smooth, cl = U.clamp;
   const name = id => (CONTENT.items[id]?.name || id).toUpperCase();
   const has = (S, id) => (S.inv.items[id] || 0) > 0;
@@ -275,12 +275,15 @@ const Arms = (() => {
         c.gesture('struggle', { hold: true });
         S.start({
           name: 'grab', root: true, cam,
-          update(dt) {
+          update(dt) {                // the shiv comes up and goes in under the phone plate
             face(dt);
-            if (this.t > 0.6 && !this.stab) { this.stab = 1; hold(c, 'r', 'knife'); c.gesture('punch', { dur: 0.45 }); Audio.sfx('stab', { pos: g.point('head', _a) }); agent.damage(10, { type: 'shiv', part: 'head', from: c.root.position.clone() }); }
+            if (this.t > 0.3) hold(c, 'r', 'knife');
+            const k = sm(cl((this.t - 0.35) / 0.25)) * (1 - sm(cl((this.t - 0.9) / 0.3)));
+            (c.ikT || (c.ikT = {})).R = k > 0 ? { p: g.point('head', new V3()).addScaledVector(_up, -0.08), w: k } : null;
+            if (this.t > 0.6 && !this.stab) { this.stab = 1; Audio.sfx('stab', { pos: g.point('head', _a) }); agent.damage(10, { type: 'shiv', part: 'head', from: c.root.position.clone() }); }
             return this.t > 1.3;
           },
-          end() { c.gesture(null); hold(c, 'r', null); settle('killed'); },
+          end() { c.gesture(null); c.ikT = {}; hold(c, 'r', null); settle('killed'); },
         });
         return;
       }
@@ -329,29 +332,37 @@ const Arms = (() => {
     throwAnim = 0.5;
     Audio.sfx('swing', { pos: o, vol: 0.7 });
   }
+  // dots along the throw (white over a faint dark halo, sized by distance so they read at any range) and a landing ring
   function arcPreview(S) {
     const on = S.throwAim;
     if (!arc) {
-      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(64 * 3), 3));
-      arc = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.075, transparent: true, opacity: 0.85, depthTest: false, depthWrite: false, map: tex('dot'), alphaTest: 0.01 }));
-      arc.frustumCulled = false; arc.renderOrder = 10;
-      ring = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.34, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthTest: false, depthWrite: false }));
-      ring.renderOrder = 10;
+      const dot = new THREE.SphereGeometry(1, 8, 6), mk = (color, opacity, order) => {
+        const m = new THREE.InstancedMesh(dot, new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false }), 64);
+        m.frustumCulled = false; m.renderOrder = order; return m;
+      };
+      arc = new THREE.Group(); arc.add(mk(0x000000, 0.3, 9), mk(0xffffff, 0.9, 10));
+      ring = new THREE.Group();
+      for (const [r0, r1, color, opacity, order] of [[0.26, 0.37, 0x000000, 0.3, 9], [0.29, 0.34, 0xffffff, 0.85, 10]]) {
+        const m = new THREE.Mesh(new THREE.RingGeometry(r0, r1, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false }));
+        m.renderOrder = order; ring.add(m);
+      }
       Engine.scene.add(arc, ring);
     }
     arc.visible = ring.visible = on;
     if (!on) return;
-    const pos = throwFrom(S, _a), v = throwVel(S, _b), arr = arc.geometry.attributes.position.array, q = new V3();
+    const pos = throwFrom(S, _a), v = throwVel(S, _b), q = new V3(), cam = Engine.camera.position, [halo, core] = arc.children;
     let n = 0, hitAt = null;
     for (let i = 0; i < 64 && !hitAt; i++) {
-      for (let k = 0; k < 2; k++) {        // two sim steps per dot
-        q.copy(pos); v.y -= GRAV / 60; pos.addScaledVector(v, 1 / 30);
-        const t = World.raycast(q, pos, null);
-        if (t < 1 || pos.y < (World.terrain ? World.terrain(pos.x, pos.z) : -50)) { hitAt = q.lerp(pos, Math.min(1, t)); break; }
-      }
-      if (i > 1) { arr[n * 3] = pos.x; arr[n * 3 + 1] = pos.y; arr[n * 3 + 2] = pos.z; n++; }
+      q.copy(pos); v.y -= GRAV / 30; pos.addScaledVector(v, 1 / 30);
+      const t = World.raycast(q, pos, null);
+      if (t < 1 || pos.y < World.groundAt(pos.x, pos.z, q.y, 0)) { hitAt = q.lerp(pos, Math.min(1, t)); break; }
+      if (i < 2) continue;
+      const d = pos.distanceTo(cam);
+      halo.setMatrixAt(n, _m.makeScale(d * 0.0075, d * 0.0075, d * 0.0075).setPosition(pos));
+      core.setMatrixAt(n, _m.makeScale(d * 0.0042, d * 0.0042, d * 0.0042).setPosition(pos));
+      n++;
     }
-    arc.geometry.setDrawRange(0, n); arc.geometry.attributes.position.needsUpdate = true;
+    halo.count = core.count = n; halo.instanceMatrix.needsUpdate = core.instanceMatrix.needsUpdate = true;
     ring.visible = !!hitAt;
     if (hitAt) { ring.position.copy(hitAt); ring.position.y = World.groundAt(hitAt.x, hitAt.z, hitAt.y + 0.1, 0) + 0.03; ring.scale.setScalar(1 + 0.08 * Math.sin(Engine.time * 6)); }
   }
@@ -365,8 +376,7 @@ const Arms = (() => {
       p.t += dt; p.vel.y -= p.g * dt; p.pos.addScaledVector(p.vel, dt);
       const seg = _b.copy(p.pos).sub(prev), len = seg.length();
       let t = World.raycast(prev, p.pos, null);
-      const ground = World.terrain ? World.terrain(p.pos.x, p.pos.z) : -50;
-      if (p.pos.y < ground) t = Math.min(t, 0.999);
+      if (p.pos.y < World.groundAt(p.pos.x, p.pos.z, prev.y, 0)) t = Math.min(t, 0.999);
       const h = len > 0 ? AI.hitTest(prev, seg.clone().normalize(), len * t) : null;
       if (h && hostile(h.agent)) { proj.splice(i, 1); hitAgent(S, p, h); continue; }
       if (t < 1 || p.t > 6) { proj.splice(i, 1); impact(S, p, prev.clone().addScaledVector(seg, Math.max(0, t - 0.02)), seg.normalize()); continue; }
@@ -497,8 +507,7 @@ const Arms = (() => {
     const cv = document.createElement('canvas'), N = 64; cv.width = cv.height = N;
     const x = cv.getContext('2d');
     const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
-    if (kind === 'dot') { g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.38, 'rgba(255,255,255,.95)'); g.addColorStop(0.5, 'rgba(20,20,20,.45)'); g.addColorStop(0.85, 'rgba(0,0,0,0)'); }   // dark rim: reads on sky
-    else { g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.4, 'rgba(255,255,255,.5)'); g.addColorStop(1, 'rgba(255,255,255,0)'); }
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.4, 'rgba(255,255,255,.5)'); g.addColorStop(1, 'rgba(255,255,255,0)');
     x.fillStyle = g; x.fillRect(0, 0, N, N);
     if (kind === 'flame') {
       x.clearRect(0, 0, N, N);
@@ -564,6 +573,7 @@ const Arms = (() => {
     hold(c, 'r', S.throwAim || throwAnim > 0.35 ? (throwAnim > 0 ? null : inv.throwSel) : bow ? null : gunOut ? g.prop : inv.melee ? inv.melee.kind : null);
     const T = c.ikT || (c.ikT = {});
     const sh = c.point('shoulder_r', new V3()), d = camDir(new V3());
+    if (bow) uprightBow(c, S.aim ? d : U.fwd(c.yaw, _b));
     if (S.aim && !g.bow) {
       const P = aimPoint(S, new V3()), dir = P.distanceTo(sh) > 1.5 ? P.sub(sh).normalize() : d;
       T.R = { p: sh.clone().addScaledVector(dir, 0.52).addScaledVector(_up, -0.04), w: 1 };
@@ -585,6 +595,16 @@ const Arms = (() => {
     throwAnim = Math.max(0, throwAnim - dt);
   }
 
+  // the bow is held upright whatever the wrist does: limbs (local Z) up, the belly (local +Y) toward the target
+  const _q = new THREE.Quaternion(), _x = new V3(), _z = new V3();
+  function uprightBow(c, dir) {
+    const b = c.held('l');
+    _z.copy(_up).addScaledVector(dir, -dir.y).normalize();
+    _x.crossVectors(dir, _z);
+    b.parent.getWorldQuaternion(_q).invert();
+    b.quaternion.setFromRotationMatrix(_m.makeBasis(_x, dir, _z)).premultiply(_q);
+  }
+
   // ---- input ------------------------------------------------------------------------------------------------------------
   function select(S) {
     const inv = S.inv, gs = guns(S);
@@ -600,7 +620,7 @@ const Arms = (() => {
     cool -= dt; gunT += dt;
     tickProjectiles(S, dt); tickHazards(S, dt); tickFx(dt);
     if (!S.p.combat) return;
-    const can = S.ctl && (!S.act || S.act.move) && !(S.water && S.water.deep) && !(S.act && S.act.name === 'carry');
+    const can = S.ctl && (!S.act || !!S.act.move) && !(S.water && S.water.deep) && !(S.act && S.act.name === 'carry');
     if (can && (!S.act || S.act.name !== 'heal')) select(S);
     if (inv.throwSel && !has(S, inv.throwSel)) inv.throwSel = THROWN.find(t => has(S, t)) || null;
     // throw aim: hold G, release to throw

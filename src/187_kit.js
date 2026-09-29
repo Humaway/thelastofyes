@@ -276,8 +276,8 @@ const Kit = (() => {
         tinker = Math.max(0, tinker - dt);
         const s = Math.sin(this.t * (tinker > 0 ? 16 : 3)) * (tinker > 0 ? 0.03 : 0.012);
         const T = c.ikT || (c.ikT = {});
-        T.L = { p: top.clone().add(new V3(rx * 0.14 + f.x * 0.06, 0.03 + s, rz * 0.14 + f.z * 0.06)), w: k };
-        T.R = { p: top.clone().add(new V3(-rx * 0.12 + f.x * 0.1, 0.05 - s, -rz * 0.12 + f.z * 0.1)), w: k };
+        T.L = { p: top.clone().add(new V3(rx * 0.07 + f.x * 0.05, 0.04 + s, rz * 0.07 + f.z * 0.05)), w: k };     // steadies the gun
+        T.R = { p: top.clone().add(new V3(-rx * 0.06 + f.x * 0.09, 0.06 - s, -rz * 0.06 + f.z * 0.09)), w: k };   // works on it
         if (this.t < 0.6 || !S.ctl) { UI.workbench(state()); return; }
         if (Input.pressed('backpack') || Input.pressed('back')) return true;
         const L = w ? CONTENT.upgrades[w].length : 0;

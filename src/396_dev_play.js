@@ -25,9 +25,9 @@
 
   CONTENT.levels.PLAY = {
     name: 'Playground', origin: [-12000, 0, 0], grade: 'summer_haze',
-    fog: { color: 0xa9b2b4, near: 45, far: 150 },
-    env: { top: 0x7896b4, horizon: 0xc8bca4, bottom: 0x4c443a, intensity: 0.85 },
-    background: 0xa9b2b4, amb: 'suburb_day', surface: 'concrete',
+    fog: { color: 0xa8b8c4, near: 45, far: 160 },
+    env: { top: 0x5f84ac, horizon: 0xc8bca4, bottom: 0x4c443a, intensity: 0.85 },
+    background: 0x8eaac4, amb: 'suburb_day', surface: 'concrete',
     build(A) {
       Build.hemi({ sky: 0xb0c4d8, ground: 0x5a4c3a, intensity: 0.55 });
       Build.sun({ dir: [-0.55, -1, -0.3], color: 0xffe4c4, intensity: 2.7, area: 48 });
