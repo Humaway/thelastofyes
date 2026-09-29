@@ -11,7 +11,7 @@ const Input = (() => {
     up: ['KeyW', 'ArrowUp'], down: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'],
     sprint: ['ShiftLeft', 'ShiftRight'], crouch: ['KeyC'], jump: ['Space'], interact: ['KeyE'], listen: ['KeyQ'],
     reload: ['KeyR'], melee: ['KeyF'], throw: ['KeyG'], backpack: ['Tab'], hint: ['KeyT'], skip: ['Space'],
-    pause: ['Escape', 'KeyP'], confirm: ['Enter', 'Space'], back: ['Escape', 'Backspace'],
+    pause: ['Escape'], confirm: ['Enter', 'Space'], back: ['Escape', 'Backspace'],
     slot1: ['Digit1'], slot2: ['Digit2'], slot3: ['Digit3'], slot4: ['Digit4'],
     menuUp: ['ArrowUp', 'KeyW'], menuDown: ['ArrowDown', 'KeyS'], menuLeft: ['ArrowLeft', 'KeyA'], menuRight: ['ArrowRight', 'KeyD'],
   };
